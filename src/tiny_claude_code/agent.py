@@ -24,6 +24,8 @@ def agent_loop(
     system: str | None = None,
     hooks: Any = None,
     error_handler: Any = None,
+    context_manager: Any = None,
+    compact_manager: Any = None,
     max_turns: int = MAX_TURNS,
 ) -> str:
     """The core agent loop.
@@ -54,6 +56,10 @@ def agent_loop(
     tools = _get_tool_schemas(tool_handlers)
 
     for _ in range(max_turns):
+        if context_manager is not None:
+            context_manager.compact(
+                messages, client=client, compact_manager=compact_manager
+            )
         response = _chat(client, messages, tools, system, error_handler)
         messages.append({"role": "assistant", "content": response.content})
 

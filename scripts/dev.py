@@ -67,9 +67,12 @@ def cmd_run(args):
     module_path = os.path.join(SRC_DIR, package, "cli.py")
     env = os.environ.copy()
     env["PYTHONPATH"] = SRC_DIR
+    agent_args = list(args.agent_args)
+    if agent_args and agent_args[0] == "--":
+        agent_args = agent_args[1:]
 
     subprocess.run(
-        [sys.executable, module_path],
+        [sys.executable, module_path, *agent_args],
         cwd=PROJECT_ROOT,
         env=env,
     )
@@ -110,6 +113,9 @@ def main():
     # run
     run_parser = sub.add_parser("run", help="Run the agent")
     run_parser.add_argument("--ref", action="store_true", help="Use reference implementation")
+    run_parser.add_argument(
+        "agent_args", nargs=argparse.REMAINDER, help="Arguments passed to the CLI"
+    )
 
     # check
     sub.add_parser("check", help="Check remaining TODOs")

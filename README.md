@@ -2,9 +2,9 @@
 
 Build your own coding agent, step by step.
 
-`tiny-claude-code` is a hands-on tutorial project for learning how a coding agent works from the inside: an LLM, a loop, tools, file access, and eventually safety, memory, tasks, and collaboration.
+`tiny-claude-code` is a hands-on tutorial project for learning how a coding agent works from the inside: an LLM, a loop, tools, file access, safety, context, memory, tasks, and collaboration.
 
-Current release: Part 2. The repository implements ch01-ch07 plus the first bug-fix exercise, with the rest of the curriculum laid out in [docs/ROADMAP.md](./docs/ROADMAP.md).
+Current release: Part 3. The repository implements ch01-ch10 plus the first bug-fix exercise, with the rest of the curriculum laid out in [docs/ROADMAP.md](./docs/ROADMAP.md).
 
 ## What You Get
 
@@ -14,6 +14,7 @@ Current release: Part 2. The repository implements ch01-ch07 plus the first bug-
 - A real LLM REPL for hands-on verification
 - A checkpoint project that lets the agent fix a real bug
 - Permission hooks and basic LLM error recovery
+- Context compaction, session resume, and project memory
 - Chapter-by-chapter教材 under [chapters/src/](./chapters/src)
 
 ## Current Release
@@ -28,10 +29,13 @@ What is implemented now:
 - ch05: Permission system
 - ch06: Hook system
 - ch07: Error recovery
+- ch08: Context budget
+- ch09: `/compact`
+- ch10: Session and memory
 
 What is planned next:
 
-- ch08-ch15, as described in [docs/ROADMAP.md](./docs/ROADMAP.md)
+- ch11-ch15, as described in [docs/ROADMAP.md](./docs/ROADMAP.md)
 
 ## Quick Start
 
@@ -56,6 +60,9 @@ python scripts/dev.py test --ch 04
 python scripts/dev.py test --ch 05
 python scripts/dev.py test --ch 06
 python scripts/dev.py test --ch 07
+python scripts/dev.py test --ch 08
+python scripts/dev.py test --ch 09
+python scripts/dev.py test --ch 10
 python scripts/dev.py test --all
 ```
 
@@ -63,6 +70,20 @@ python scripts/dev.py test --all
 
 ```bash
 python scripts/dev.py run
+```
+
+Resume the latest session:
+
+```bash
+python scripts/dev.py run -- --resume
+```
+
+Inside the REPL:
+
+```text
+/compact
+/memory add "Testing" "Run tests with pytest -q"
+/memory list
 ```
 
 ### Reference implementation
@@ -134,6 +155,7 @@ tiny-claude-code/
 
 - `python -m pytest` runs the released `tests/` suite by default.
 - `examples/simple-bug/` is meant to fail until the agent fixes it.
+- Runtime session and memory files are stored under `.tiny-claude-code/`.
 - The chapter roadmap is intentionally longer than the current implementation; the repository is being published in a checkpointed state.
 
 ## License
