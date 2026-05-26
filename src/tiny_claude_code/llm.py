@@ -44,6 +44,7 @@ class LLMClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int = 8000,
+        system: str | None = None,
     ) -> anthropic.types.Message:
         """Send messages to the LLM and return the response.
 
@@ -64,4 +65,6 @@ class LLMClient:
         }
         if tools:
             kwargs["tools"] = tools
+        if system:
+            kwargs["system"] = system
         return self.client.messages.create(**kwargs)

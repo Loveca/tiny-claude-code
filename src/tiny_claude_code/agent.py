@@ -21,6 +21,7 @@ def agent_loop(
     messages: list[dict[str, Any]],
     tool_handlers: dict[str, Any] | None = None,
     client: Any = None,
+    system: str | None = None,
 ) -> str:
     """The core agent loop.
 
@@ -50,7 +51,7 @@ def agent_loop(
     tools = _get_tool_schemas(tool_handlers)
 
     for _ in range(MAX_TURNS):
-        response = client.chat(messages, tools=tools)
+        response = client.chat(messages, tools=tools, system=system)
         messages.append({"role": "assistant", "content": response.content})
 
         if response.stop_reason != "tool_use":

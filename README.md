@@ -4,6 +4,8 @@ Build your own coding agent — a hands-on tutorial project.
 
 From scratch, step by step, implement a working CLI coding agent that can read code, edit files, run commands, and fix bugs.
 
+This repository is currently implemented through Checkpoint 1: ch01-ch04 plus the first bug-fix exercise.
+
 ## Quick Start
 
 ```bash
@@ -53,3 +55,5 @@ python scripts/dev.py run              # Run your agent (real LLM)
 python scripts/dev.py run --ref        # Run reference implementation
 python scripts/dev.py check            # Check which TODOs remain
 ```
+
+Note: `python -m pytest` runs the released tests under `tests/`. The intentionally broken Checkpoint 1 project under `examples/simple-bug/` is not part of the default pytest suite.

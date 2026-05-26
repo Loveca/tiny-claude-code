@@ -1,11 +1,11 @@
-"""File glob and text search tool."""
+﻿"""File glob and text search tool."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-from tiny_claude_code.tools.base import Tool
+from tiny_claude_code_ref.tools.base import Tool
 
 
 class SearchTool(Tool):
@@ -92,3 +92,4 @@ class SearchTool(Tool):
         if len(text) > self.max_output_chars:
             text = text[: self.max_output_chars] + "\n[truncated]"
         return text
+

@@ -1,11 +1,11 @@
-"""File write and edit tool."""
+﻿"""File write and edit tool."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-from tiny_claude_code.tools.base import Tool
+from tiny_claude_code_ref.tools.base import Tool
 
 
 class WriteTool(Tool):
@@ -77,3 +77,4 @@ class WriteTool(Tool):
             return "Error: old_text not found"
         target.write_text(text.replace(old_text, new_text, 1), encoding="utf-8")
         return f"Edited {display_path}"
+

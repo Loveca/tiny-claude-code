@@ -1,4 +1,4 @@
-"""Shell command tool."""
+﻿"""Shell command tool."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-from tiny_claude_code.tools.base import Tool
+from tiny_claude_code_ref.tools.base import Tool
 
 
 class ShellTool(Tool):
@@ -73,3 +73,4 @@ class ShellTool(Tool):
         if len(text) <= self.max_output_chars:
             return text
         return text[: self.max_output_chars] + "\n[truncated]"
+

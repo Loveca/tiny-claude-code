@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from tiny_claude_code.tools.base import Tool
@@ -35,12 +36,12 @@ class ToolRegistry:
             return f"Error: tool '{name}' failed: {exc}"
 
 
-def create_default_registry() -> ToolRegistry:
+def create_default_registry(workspace: str | Path | None = None) -> ToolRegistry:
     registry = ToolRegistry()
-    registry.register(ShellTool())
-    registry.register(ReadTool())
-    registry.register(WriteTool())
-    registry.register(SearchTool())
+    registry.register(ShellTool(workspace=workspace))
+    registry.register(ReadTool(workspace=workspace))
+    registry.register(WriteTool(workspace=workspace))
+    registry.register(SearchTool(workspace=workspace))
     return registry
 
 

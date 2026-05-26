@@ -7,12 +7,18 @@ ch10: you will add --resume flag and /memory command.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from tiny_claude_code.agent import agent_loop
 from tiny_claude_code.llm import LLMClient
 from tiny_claude_code.tools import create_default_registry
 
 
-SYSTEM_PROMPT = "You are a helpful coding assistant."
+SYSTEM_PROMPT = (
+    "You are a coding agent working in {workspace}. "
+    "Use the available tools to inspect files, edit code, and run commands. "
+    "Act to solve the user's task, then summarize what changed."
+)
 
 
 def main() -> None:
@@ -32,9 +38,11 @@ def main() -> None:
     ch09: add /compact command
     ch10: add --resume and /memory commands
     """
+    workspace = Path.cwd()
     client = LLMClient()
     messages: list[dict] = []
-    tools = create_default_registry()
+    tools = create_default_registry(workspace)
+    system = SYSTEM_PROMPT.format(workspace=workspace)
 
     print("tiny-claude-code (type /exit to quit)")
     while True:
@@ -51,7 +59,7 @@ def main() -> None:
             break
 
         messages.append({"role": "user", "content": user_input})
-        response = agent_loop(messages, tool_handlers=tools, client=client)
+        response = agent_loop(messages, tool_handlers=tools, client=client, system=system)
         print(f"\n{response}\n")
 
 
