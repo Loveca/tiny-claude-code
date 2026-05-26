@@ -10,7 +10,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from tiny_claude_code.agent import agent_loop
+from tiny_claude_code.error_recovery import ErrorHandler
+from tiny_claude_code.hooks import HookSystem, StopLogHook, ToolLogHook
 from tiny_claude_code.llm import LLMClient
+from tiny_claude_code.permissions import PermissionManager
 from tiny_claude_code.tools import create_default_registry
 
 
@@ -43,6 +46,14 @@ def main() -> None:
     messages: list[dict] = []
     tools = create_default_registry(workspace)
     system = SYSTEM_PROMPT.format(workspace=workspace)
+    hooks = HookSystem()
+    permissions = PermissionManager(workspace=workspace)
+    tool_log = ToolLogHook()
+    stop_log = StopLogHook()
+    error_handler = ErrorHandler()
+    hooks.register("PreToolUse", permissions.as_hook, priority=100)
+    hooks.register("PostToolUse", tool_log.post_tool_use)
+    hooks.register("Stop", stop_log.stop)
 
     print("tiny-claude-code (type /exit to quit)")
     while True:
@@ -58,8 +69,21 @@ def main() -> None:
             print("Bye!")
             break
 
+        prompt_override = hooks.trigger(
+            "UserPromptSubmit", prompt=user_input, messages=messages
+        )
+        if prompt_override is not None:
+            user_input = str(prompt_override)
+
         messages.append({"role": "user", "content": user_input})
-        response = agent_loop(messages, tool_handlers=tools, client=client, system=system)
+        response = agent_loop(
+            messages,
+            tool_handlers=tools,
+            client=client,
+            system=system,
+            hooks=hooks,
+            error_handler=error_handler,
+        )
         print(f"\n{response}\n")
 
 

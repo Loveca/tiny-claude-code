@@ -4,7 +4,7 @@ Build your own coding agent, step by step.
 
 `tiny-claude-code` is a hands-on tutorial project for learning how a coding agent works from the inside: an LLM, a loop, tools, file access, and eventually safety, memory, tasks, and collaboration.
 
-Current release: Checkpoint 1. The repository implements ch01-ch04 plus the first bug-fix exercise, with the rest of the curriculum laid out in [docs/ROADMAP.md](./docs/ROADMAP.md).
+Current release: Part 2. The repository implements ch01-ch07 plus the first bug-fix exercise, with the rest of the curriculum laid out in [docs/ROADMAP.md](./docs/ROADMAP.md).
 
 ## What You Get
 
@@ -13,6 +13,7 @@ Current release: Checkpoint 1. The repository implements ch01-ch04 plus the firs
 - Mock-LLM chapter tests that run without an API key
 - A real LLM REPL for hands-on verification
 - A checkpoint project that lets the agent fix a real bug
+- Permission hooks and basic LLM error recovery
 - Chapter-by-chapter教材 under [chapters/src/](./chapters/src)
 
 ## Current Release
@@ -24,10 +25,13 @@ What is implemented now:
 - ch03: File tools
 - ch04: Tool registry
 - Checkpoint 1: first bug-fix exercise
+- ch05: Permission system
+- ch06: Hook system
+- ch07: Error recovery
 
 What is planned next:
 
-- ch05-ch15, as described in [docs/ROADMAP.md](./docs/ROADMAP.md)
+- ch08-ch15, as described in [docs/ROADMAP.md](./docs/ROADMAP.md)
 
 ## Quick Start
 
@@ -49,6 +53,9 @@ python scripts/dev.py test --ch 01
 python scripts/dev.py test --ch 02
 python scripts/dev.py test --ch 03
 python scripts/dev.py test --ch 04
+python scripts/dev.py test --ch 05
+python scripts/dev.py test --ch 06
+python scripts/dev.py test --ch 07
 python scripts/dev.py test --all
 ```
 

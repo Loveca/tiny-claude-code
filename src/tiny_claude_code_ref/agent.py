@@ -22,6 +22,9 @@ def agent_loop(
     tool_handlers: dict[str, Any] | None = None,
     client: Any = None,
     system: str | None = None,
+    hooks: Any = None,
+    error_handler: Any = None,
+    max_turns: int = MAX_TURNS,
 ) -> str:
     """The core agent loop.
 
@@ -50,34 +53,70 @@ def agent_loop(
 
     tools = _get_tool_schemas(tool_handlers)
 
-    for _ in range(MAX_TURNS):
-        response = client.chat(messages, tools=tools, system=system)
+    for _ in range(max_turns):
+        response = _chat(client, messages, tools, system, error_handler)
         messages.append({"role": "assistant", "content": response.content})
 
         if response.stop_reason != "tool_use":
-            return _extract_text(response.content)
+            final_text = _extract_text(response.content)
+            _trigger(hooks, "Stop", messages=messages, response=final_text)
+            return final_text
 
         if tool_handlers is None:
-            return _extract_text(response.content)
+            final_text = _extract_text(response.content)
+            _trigger(hooks, "Stop", messages=messages, response=final_text)
+            return final_text
 
         tool_results = []
         for block in response.content:
             if getattr(block, "type", None) != "tool_use":
                 continue
+            tool_use_id = getattr(block, "id", None)
+            tool_name = getattr(block, "name", None)
+            tool_input = getattr(block, "input", None)
+            if not tool_use_id or not tool_name or not isinstance(tool_input, dict):
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id or "unknown",
+                        "content": "Error: malformed tool_use block",
+                    }
+                )
+                continue
 
-            output = _dispatch_tool(tool_handlers, block.name, block.input)
+            denial = _trigger(
+                hooks,
+                "PreToolUse",
+                tool_name=tool_name,
+                tool_input=tool_input,
+                block=block,
+            )
+            if denial is not None:
+                output = str(denial)
+            else:
+                output = _dispatch_tool(tool_handlers, tool_name, tool_input)
+                _trigger(
+                    hooks,
+                    "PostToolUse",
+                    tool_name=tool_name,
+                    tool_input=tool_input,
+                    result=output,
+                    block=block,
+                )
 
             tool_results.append(
                 {
                     "type": "tool_result",
-                    "tool_use_id": block.id,
+                    "tool_use_id": tool_use_id,
                     "content": str(output),
                 }
             )
 
         messages.append({"role": "user", "content": tool_results})
 
-    return "Error: maximum number of turns reached."
+    final_text = "Error: maximum number of turns reached."
+    _trigger(hooks, "Stop", messages=messages, response=final_text)
+    return final_text
 
 
 def _extract_text(content: list[Any]) -> str:
@@ -117,4 +156,21 @@ def _dispatch_tool(tool_handlers: Any, name: str, tool_input: dict[str, Any]) ->
         return str(handler_entry["handler"](**tool_input))
     return str(handler_entry.execute(**tool_input))
 
+
+def _chat(
+    client: Any,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    system: str | None,
+    error_handler: Any,
+) -> Any:
+    if error_handler is not None:
+        return error_handler.chat(client, messages, tools=tools, system=system)
+    return client.chat(messages, tools=tools, system=system)
+
+
+def _trigger(hooks: Any, event: str, **kwargs: Any) -> Any:
+    if hooks is None:
+        return None
+    return hooks.trigger(event, **kwargs)
 
