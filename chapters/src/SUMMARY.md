@@ -9,3 +9,6 @@
 - [ch05: Permission System](./ch05-permission-system.md)
 - [ch06: Hook System](./ch06-hook-system.md)
 - [ch07: Error Recovery](./ch07-error-recovery.md)
+- [ch08: Context Budget](./ch08-context-budget.md)
+- [ch09: Compact](./ch09-compact.md)
+- [ch10: Session and Memory](./ch10-session-memory.md)
