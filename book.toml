@@ -1,0 +1,8 @@
+[book]
+title = "tiny-claude-code"
+authors = ["tiny-claude-code contributors"]
+language = "zh-CN"
+src = "chapters/src"
+
+[output.html]
+git-repository-url = "https://github.com/xxx/tiny-claude-code"
