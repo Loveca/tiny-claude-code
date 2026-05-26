@@ -11,6 +11,7 @@ ch08: you will add context.compact() before each LLM call.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 MAX_TURNS = 50
@@ -46,9 +47,7 @@ def agent_loop(
     if client is None:
         raise ValueError("client is required")
 
-    tools = None
-    if tool_handlers:
-        tools = [handler["schema"] for handler in tool_handlers.values()]
+    tools = _get_tool_schemas(tool_handlers)
 
     for _ in range(MAX_TURNS):
         response = client.chat(messages, tools=tools)
@@ -65,11 +64,7 @@ def agent_loop(
             if getattr(block, "type", None) != "tool_use":
                 continue
 
-            handler_entry = tool_handlers.get(block.name)
-            if handler_entry is None:
-                output = f"Error: unknown tool '{block.name}'"
-            else:
-                output = handler_entry["handler"](**block.input)
+            output = _dispatch_tool(tool_handlers, block.name, block.input)
 
             tool_results.append(
                 {
@@ -91,3 +86,32 @@ def _extract_text(content: list[Any]) -> str:
         if text is not None:
             parts.append(text)
     return "\n".join(parts)
+
+
+def _get_tool_schemas(tool_handlers: Any) -> list[dict[str, Any]] | None:
+    if tool_handlers is None:
+        return None
+    if hasattr(tool_handlers, "get_schemas"):
+        return tool_handlers.get_schemas()
+    if not tool_handlers:
+        return None
+
+    schemas = []
+    for handler in tool_handlers.values():
+        if isinstance(handler, Mapping):
+            schemas.append(handler["schema"])
+        else:
+            schemas.append(handler.schema)
+    return schemas
+
+
+def _dispatch_tool(tool_handlers: Any, name: str, tool_input: dict[str, Any]) -> str:
+    if hasattr(tool_handlers, "dispatch"):
+        return str(tool_handlers.dispatch(name, tool_input))
+
+    handler_entry = tool_handlers.get(name)
+    if handler_entry is None:
+        return f"Error: unknown tool '{name}'"
+    if isinstance(handler_entry, Mapping):
+        return str(handler_entry["handler"](**tool_input))
+    return str(handler_entry.execute(**tool_input))

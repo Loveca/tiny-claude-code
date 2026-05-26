@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from tiny_claude_code.agent import agent_loop
 from tiny_claude_code.llm import LLMClient
+from tiny_claude_code.tools import create_default_registry
 
 
 SYSTEM_PROMPT = "You are a helpful coding assistant."
@@ -33,6 +34,7 @@ def main() -> None:
     """
     client = LLMClient()
     messages: list[dict] = []
+    tools = create_default_registry()
 
     print("tiny-claude-code (type /exit to quit)")
     while True:
@@ -49,7 +51,7 @@ def main() -> None:
             break
 
         messages.append({"role": "user", "content": user_input})
-        response = agent_loop(messages, tool_handlers=None, client=client)
+        response = agent_loop(messages, tool_handlers=tools, client=client)
         print(f"\n{response}\n")
 
 
