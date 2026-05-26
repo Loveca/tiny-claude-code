@@ -6,3 +6,6 @@
 - [ch03: File Tools](./ch03-file-tools.md)
 - [ch04: Tool Registry](./ch04-tool-registry.md)
 - [Checkpoint 1: 第一次修 Bug](./checkpoint-1-first-bug.md)
+- [ch05: Permission System](./ch05-permission-system.md)
+- [ch06: Hook System](./ch06-hook-system.md)
+- [ch07: Error Recovery](./ch07-error-recovery.md)
