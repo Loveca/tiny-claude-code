@@ -1,59 +1,134 @@
 # tiny-claude-code
 
-Build your own coding agent — a hands-on tutorial project.
+Build your own coding agent, step by step.
 
-From scratch, step by step, implement a working CLI coding agent that can read code, edit files, run commands, and fix bugs.
+`tiny-claude-code` is a hands-on tutorial project for learning how a coding agent works from the inside: an LLM, a loop, tools, file access, and eventually safety, memory, tasks, and collaboration.
 
-This repository is currently implemented through Checkpoint 1: ch01-ch04 plus the first bug-fix exercise.
+Current release: Checkpoint 1. The repository implements ch01-ch04 plus the first bug-fix exercise, with the rest of the curriculum laid out in [docs/ROADMAP.md](./docs/ROADMAP.md).
+
+## What You Get
+
+- A minimal CLI coding agent
+- Shell, file read/write, search, and tool registry support
+- Mock-LLM chapter tests that run without an API key
+- A real LLM REPL for hands-on verification
+- A checkpoint project that lets the agent fix a real bug
+- Chapter-by-chapter教材 under [chapters/src/](./chapters/src)
+
+## Current Release
+
+What is implemented now:
+
+- ch01: Agent loop and CLI
+- ch02: Shell tool
+- ch03: File tools
+- ch04: Tool registry
+- Checkpoint 1: first bug-fix exercise
+
+What is planned next:
+
+- ch05-ch15, as described in [docs/ROADMAP.md](./docs/ROADMAP.md)
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/xxx/tiny-claude-code
+git clone git@github.com:Loveca/tiny-claude-code.git
 cd tiny-claude-code
 pip install -r requirements.txt
-cp .env.example .env  # fill in ANTHROPIC_API_KEY
+cp .env.example .env
+```
+
+Set `ANTHROPIC_API_KEY` in `.env`, then choose a model in `MODEL_ID` if needed.
+
+## Run It
+
+### Chapter tests
+
+```bash
+python scripts/dev.py test --ch 01
+python scripts/dev.py test --ch 02
+python scripts/dev.py test --ch 03
+python scripts/dev.py test --ch 04
+python scripts/dev.py test --all
+```
+
+### Real agent
+
+```bash
+python scripts/dev.py run
+```
+
+### Reference implementation
+
+```bash
+python scripts/dev.py run --ref
+```
+
+### Check remaining TODOs
+
+```bash
+python scripts/dev.py check
 ```
 
 ## Learning Path
 
 | Part | Chapters | What you build |
-|------|----------|---------------|
-| Part 1: Minimum Viable Agent | ch01-04 | Agent loop, shell, file tools, registry |
-| Checkpoint 1 | | Fix your first bug with your agent! |
-| Part 2: Safety & Robustness | ch05-07 | Permission, hooks, error recovery |
-| Part 3: Context & Memory | ch08-10 | Context budget, /compact, session & memory |
-| Checkpoint 2 | | Long conversation + session resume |
-| Part 4: Tasks & Collaboration | ch11-13 | Todo/task, subagent, background & cron |
-| Part 5: Practice & Extensions | ch14-15 | Real project challenge, skills & plugins |
+|------|----------|----------------|
+| Part 1 | ch01-04 | Agent loop, shell, file tools, registry |
+| Checkpoint 1 |  | Fix your first bug with the agent |
+| Part 2 | ch05-07 | Permission, hooks, error recovery |
+| Part 3 | ch08-10 | Context budget, `/compact`, session and memory |
+| Checkpoint 2 |  | Long conversation and session resume |
+| Part 4 | ch11-13 | Todo/task, subagent, background and cron |
+| Part 5 | ch14-15 | Real project challenge, skills and plugins |
 
 ## Workflow
 
 ```bash
-# Read the chapter tutorial
+# Read the chapter
 cat chapters/src/ch01-agent-loop.md
 
-# Implement the TODOs
-# edit src/tiny_claude_code/agent.py ...
+# Implement or compare
+diff src/tiny_claude_code/agent.py src/tiny_claude_code_ref/agent.py
 
-# Run unit tests (mock LLM, no API key needed)
+# Run released tests
 python scripts/dev.py test --ch 01
 
-# Run your agent (real LLM, needs API key)
+# Run the actual agent
 python scripts/dev.py run
-
-# Stuck? Compare with reference implementation
-diff src/tiny_claude_code/agent.py src/tiny_claude_code_ref/agent.py
 ```
 
-## Commands
+## Checkpoint 1
 
-```bash
-python scripts/dev.py test --ch 01     # Run tests for chapter 01
-python scripts/dev.py test --all       # Run all tests
-python scripts/dev.py run              # Run your agent (real LLM)
-python scripts/dev.py run --ref        # Run reference implementation
-python scripts/dev.py check            # Check which TODOs remain
+Checkpoint 1 is intentionally small and practical:
+
+- Run tests in `examples/simple-bug/`
+- Read the failure
+- Fix the off-by-one bug
+- Re-run the tests until they pass
+
+The checkpoint project is deliberately failing at first and is not part of the default `pytest` run. The released test suite lives under `tests/`.
+
+## Repository Layout
+
+```text
+tiny-claude-code/
+  src/
+    tiny_claude_code/       # student implementation
+    tiny_claude_code_ref/   # reference implementation
+  chapters/src/             # tutorial chapters
+  examples/simple-bug/      # checkpoint exercise
+  tests/                    # released chapter tests
+  tests_all/                # full chapter test set
+  scripts/dev.py            # test/run/check helper
 ```
 
-Note: `python -m pytest` runs the released tests under `tests/`. The intentionally broken Checkpoint 1 project under `examples/simple-bug/` is not part of the default pytest suite.
+## Notes
+
+- `python -m pytest` runs the released `tests/` suite by default.
+- `examples/simple-bug/` is meant to fail until the agent fixes it.
+- The chapter roadmap is intentionally longer than the current implementation; the repository is being published in a checkpointed state.
+
+## License
+
+MIT
