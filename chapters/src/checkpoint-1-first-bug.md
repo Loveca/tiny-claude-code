@@ -73,6 +73,14 @@ python -m pytest examples/simple-bug -q
 
 预期初始状态是失败。agent 修复后，再运行同一命令应该通过。
 
+项目根目录的默认测试不会收集这个故意失败的示例：
+
+```bash
+python -m pytest
+```
+
+默认只运行 `tests/`，这是为了避免 checkpoint 的初始失败状态影响课程单元测试。
+
 ## 思考题
 
 1. agent 是先读代码还是先跑测试更好？为什么？

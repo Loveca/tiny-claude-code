@@ -6,7 +6,7 @@
 
 ch01 的 agent loop 已经会处理 `tool_use`，但还没有真实工具。本章实现第一个工具：`bash`。模型可以请求运行 shell 命令，harness 执行命令，把 stdout、stderr 和 exit code 作为 `tool_result` 返回给模型。
 
-完成后，agent 可以列目录、运行 Python 脚本、执行测试。它还不能安全地读写任意文件，也没有权限审批；这些会在后续章节逐步补上。
+完成后，agent 可以列目录、运行 Python 脚本、执行测试。它还没有完整权限审批；这些会在后续章节逐步补上。
 
 ## 为什么第一个工具是 Shell
 
@@ -17,7 +17,7 @@ Shell 是 coding agent 最通用的动作接口。很多开发任务最终都会
 - `pytest` 跑测试
 - `git status` 看工作区
 
-Shell 的优势是覆盖面广，缺点是危险且输出不可结构化。本章只做最小安全检查，目的是理解工具协议；真正的权限系统在 ch05。
+Shell 的优势是覆盖面广，缺点是危险且输出不可结构化。本章只做最小安全检查和输出截断，目的是理解工具协议；真正的权限系统在 ch05。
 
 ## 工具协议分两半
 
@@ -53,6 +53,8 @@ ToolUseBlock(name="bash", input={"command": "python -m pytest"})
 
 真正执行命令的是本地 `ShellTool.execute`。
 
+`ShellTool` 会绑定一个 workspace，并用这个目录作为命令执行的 `cwd`。这样模型看到的“当前项目”与工具实际操作的目录一致。
+
 ## 输出为什么要包含 exit code
 
 命令输出不只有 stdout。一个测试失败时，关键信息可能在 stderr；一个命令没有输出但 exit code 非 0，也表示失败。
@@ -63,6 +65,7 @@ ToolUseBlock(name="bash", input={"command": "python -m pytest"})
 - `stdout`
 - `stderr`
 - 无输出时的占位文本
+- 输出过长时的 `[truncated]` 标记
 
 这让模型能区分“命令成功但没输出”和“命令失败”。
 
@@ -91,6 +94,7 @@ result = subprocess.run(
 
 - 空命令直接拒绝
 - 超长命令直接拒绝
+- 超长输出截断，避免在 ch08 前把上下文打爆
 
 超时要捕获 `subprocess.TimeoutExpired`，返回错误字符串，而不是让程序崩溃。
 
@@ -108,6 +112,8 @@ python scripts/dev.py test --ch 02
 - 空命令被拒绝
 - 超长命令被拒绝
 - 超时命令被截断
+- 命令在绑定 workspace 中运行
+- 长输出被截断
 
 ## 验收任务
 

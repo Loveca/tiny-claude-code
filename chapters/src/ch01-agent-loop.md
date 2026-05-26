@@ -67,7 +67,7 @@ Harness = 对话状态 + 工具接口 + 执行循环 + 安全边界 + 上下文�
               再次调用模型
 ```
 
-本章的 CLI 默认还没有真实工具，但 `agent_loop` 会先实现工具协议的骨架。这样 ch02 加入 shell tool 时，主循环不用重写。
+在纯 ch01 阶段，CLI 默认还没有真实工具；但 `agent_loop` 会先实现工具协议的骨架。这样 ch02 加入 shell tool 时，主循环不用重写。当前仓库已经实现到 Checkpoint 1，所以你在代码里会看到 CLI 已经接入了默认工具集。
 
 ## Messages API 是状态机
 
@@ -166,7 +166,7 @@ Anthropic response 上有一个 `stop_reason` 字段。本章只关心两个情�
 - 读取 `ANTHROPIC_API_KEY`
 - 读取 `MODEL_ID`
 - 可选读取 `ANTHROPIC_BASE_URL`
-- 暴露 `chat(messages, tools=None, max_tokens=8000)`
+- 暴露 `chat(messages, tools=None, max_tokens=8000, system=None)`
 
 设计原因：后续 ch07 会给 LLM 调用加重试、fallback 和 token 恢复。如果 API 调用散落在各处，后面很难统一改。
 
@@ -198,6 +198,7 @@ Anthropic response 上有一个 `stop_reason` 字段。本章只关心两个情�
 
 - 初始化 `LLMClient`
 - 维护 `messages`
+- 组装 system prompt，告诉模型它是 coding agent，并告知当前 workspace
 - 读取用户输入
 - 支持 `/exit` 和 `/quit`
 - 每轮调用 `agent_loop`
@@ -219,6 +220,8 @@ kwargs = {
 }
 if tools:
     kwargs["tools"] = tools
+if system:
+    kwargs["system"] = system
 return self.client.messages.create(**kwargs)
 ```
 

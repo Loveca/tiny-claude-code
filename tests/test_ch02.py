@@ -20,6 +20,14 @@ def test_shell_executes_command() -> None:
     assert "hello" in result
 
 
+def test_shell_runs_in_bound_workspace(tmp_path) -> None:
+    tool = ShellTool(workspace=tmp_path)
+
+    result = tool.execute("python -c \"from pathlib import Path; print(Path.cwd().name)\"")
+
+    assert tmp_path.name in result
+
+
 def test_shell_reports_nonzero_exit() -> None:
     tool = ShellTool()
 
@@ -50,3 +58,11 @@ def test_shell_timeout() -> None:
     result = tool.execute("python -c \"import time; time.sleep(2)\"", timeout=1)
 
     assert "timed out" in result.lower()
+
+
+def test_shell_truncates_long_output() -> None:
+    tool = ShellTool(max_output_chars=20)
+
+    result = tool.execute("python -c \"print('x' * 100)\"")
+
+    assert "[truncated]" in result

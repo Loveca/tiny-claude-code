@@ -46,6 +46,7 @@ class MockLLMClient:
     def __init__(self) -> None:
         self.responses: list[MockMessage] = []
         self._call_count = 0
+        self.last_system: str | None = None
 
     def add_text_response(self, text: str) -> None:
         self.responses.append(MockMessage(
@@ -78,12 +79,27 @@ class MockLLMClient:
             stop_reason="tool_use",
         ))
 
+    def add_tool_use_blocks_response(
+        self,
+        tool_calls: list[tuple[str, dict[str, Any]]],
+        stop_reason: str = "tool_use",
+    ) -> None:
+        self.responses.append(MockMessage(
+            content=[
+                MockToolUseBlock(id=f"toolu_{index:02d}", name=name, input=tool_input)
+                for index, (name, tool_input) in enumerate(tool_calls, 1)
+            ],
+            stop_reason=stop_reason,
+        ))
+
     def chat(
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int = 8000,
+        system: str | None = None,
     ) -> MockMessage:
+        self.last_system = system
         if self._call_count >= len(self.responses):
             return MockMessage(
                 content=[MockTextBlock(text="No more responses configured.")],

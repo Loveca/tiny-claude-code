@@ -73,6 +73,14 @@ write(path="hello.py", old_text="helo", new_text="hello")
 
 如果 `old_text` 不存在，必须返回错误且不修改文件。这个约束很重要：agent 编辑代码时，宁可失败并重新观察，也不要静默写错。
 
+参数组合也必须明确：
+
+- 写文件：必须提供 `path + content`
+- 编辑文件：必须提供 `path + old_text + new_text`
+- 不能同时提供 `content` 和 `old_text/new_text`
+
+这可以避免模型只传 `old_text` 时把匹配内容误删。
+
 ## SearchTool
 
 `search` 有两种模式：
@@ -81,6 +89,8 @@ write(path="hello.py", old_text="helo", new_text="hello")
 - `type="grep"`：按文本内容搜索，例如 `TODO`
 
 它不是为了替代 ripgrep，而是提供一个跨平台、可测试的最小搜索接口。后续可以把底层实现替换成 `rg`，外部 schema 不必变。
+
+`read` 和 `search` 都会限制输出大小。这个限制不是完整上下文管理，真正的上下文预算会在 ch08 实现；本章先避免工具一次返回过多文本。
 
 ## 需要修改的文件
 
@@ -102,8 +112,10 @@ python scripts/dev.py test --ch 03
 - 写新文件
 - 精确替换
 - 替换失败时不修改文件
+- 不完整编辑参数被拒绝
 - glob 搜索
 - grep 搜索
+- 读文件和搜索输出会截断
 
 ## 验收任务
 

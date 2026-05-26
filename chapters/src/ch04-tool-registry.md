@@ -111,6 +111,7 @@ python scripts/dev.py test --ch 04
 - dispatch 未知工具返回错误
 - 同名工具重复注册时新工具覆盖旧工具
 - agent loop 能直接使用 registry
+- registry 可以绑定默认工具的 workspace
 
 ## 验收任务
 

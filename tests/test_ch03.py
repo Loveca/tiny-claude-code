@@ -69,6 +69,28 @@ def test_write_edit_missing_old_text_does_not_modify(tmp_path: Path) -> None:
     assert target.read_text(encoding="utf-8") == "print('hello')\n"
 
 
+def test_write_rejects_incomplete_edit(tmp_path: Path) -> None:
+    target = tmp_path / "hello.py"
+    target.write_text("print('hello')\n", encoding="utf-8")
+
+    result = WriteTool().execute("hello.py", old_text="hello", workspace=str(tmp_path))
+
+    assert "both old_text and new_text" in result
+    assert target.read_text(encoding="utf-8") == "print('hello')\n"
+
+
+def test_write_rejects_mixed_write_and_edit(tmp_path: Path) -> None:
+    result = WriteTool().execute(
+        "hello.py",
+        content="new",
+        old_text="old",
+        new_text="new",
+        workspace=str(tmp_path),
+    )
+
+    assert "either content" in result
+
+
 def test_search_glob(tmp_path: Path) -> None:
     (tmp_path / "a.py").write_text("", encoding="utf-8")
     (tmp_path / "b.txt").write_text("", encoding="utf-8")
@@ -87,3 +109,22 @@ def test_search_grep(tmp_path: Path) -> None:
 
     assert "a.py:2" in result
     assert "needle" in result
+
+
+def test_read_truncates_large_file(tmp_path: Path) -> None:
+    target = tmp_path / "big.txt"
+    target.write_text("x" * 100, encoding="utf-8")
+
+    result = ReadTool(max_output_chars=10).execute("big.txt", workspace=str(tmp_path))
+
+    assert "[truncated]" in result
+
+
+def test_search_limits_results(tmp_path: Path) -> None:
+    for index in range(5):
+        (tmp_path / f"{index}.py").write_text("", encoding="utf-8")
+
+    result = SearchTool(max_results=2).execute("*.py", workspace=str(tmp_path))
+
+    assert "[truncated]" in result
+    assert len([line for line in result.splitlines() if line.endswith(".py")]) == 2

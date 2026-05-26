@@ -113,3 +113,30 @@ class TestAgentLoop:
 
         # user(1) + assistant(1) + tool_result(1) + assistant(1) = 4
         assert len(messages) >= 3
+
+    def test_multiple_tool_uses_in_one_response(self, mock_client: MockLLMClient):
+        """One assistant response can contain more than one tool_use block."""
+        mock_client.add_tool_use_blocks_response([
+            ("echo", {"text": "a"}),
+            ("echo", {"text": "b"}),
+        ])
+        mock_client.add_text_response("done")
+
+        tool_handlers = {
+            "echo": {
+                "schema": {"name": "echo", "description": "Echo text"},
+                "handler": lambda text: text.upper(),
+            }
+        }
+        messages = [{"role": "user", "content": "echo two values"}]
+
+        result = agent_loop(messages, tool_handlers=tool_handlers, client=mock_client, system="test system")
+
+        assert result == "done"
+        assert mock_client.last_system == "test system"
+        tool_result_messages = [
+            message for message in messages
+            if message["role"] == "user" and isinstance(message["content"], list)
+        ]
+        assert len(tool_result_messages) == 1
+        assert [block["content"] for block in tool_result_messages[0]["content"]] == ["A", "B"]

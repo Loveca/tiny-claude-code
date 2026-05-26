@@ -1,11 +1,11 @@
-"""File and directory read tool."""
+﻿"""File and directory read tool."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-from tiny_claude_code.tools.base import Tool
+from tiny_claude_code_ref.tools.base import Tool
 
 
 class ReadTool(Tool):
@@ -70,3 +70,4 @@ class ReadTool(Tool):
         if len(text) <= self.max_output_chars:
             return text
         return text[: self.max_output_chars] + "\n[truncated]"
+
