@@ -15,3 +15,5 @@
 - [ch11: Todo and Task System](./ch11-todo-task.md)
 - [ch12: Subagent](./ch12-subagent.md)
 - [ch13: Background and Cron](./ch13-background-cron.md)
+- [ch14: Real Project Challenge](./ch14-real-project-challenge.md)
+- [ch15: Skills and Plugins](./ch15-skills-plugins.md)

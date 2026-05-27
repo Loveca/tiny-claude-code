@@ -42,6 +42,7 @@ def create_default_registry(
     task_manager: Any = None,
     background_manager: Any = None,
     cron_scheduler: Any = None,
+    plugin_dir: str | Path | None = None,
 ) -> ToolRegistry:
     from tiny_claude_code.background import (
         BackgroundManager,
@@ -51,6 +52,7 @@ def create_default_registry(
     from tiny_claude_code.subagent import SubAgentTool
     from tiny_claude_code.tasks import TaskManager, TodoWriteTool
     from tiny_claude_code.cron import CronScheduler, CronScheduleTool
+    from tiny_claude_code.tools.plugin import PluginLoader
 
     registry = ToolRegistry()
     registry.register(ShellTool(workspace=workspace))
@@ -66,6 +68,7 @@ def create_default_registry(
     registry.register(CronScheduleTool(cron_scheduler))
     if client is not None:
         registry.register(SubAgentTool(client=client, tools=registry))
+    PluginLoader(plugin_dir).load_plugins(registry)
     return registry
 
 
@@ -84,6 +87,7 @@ __all__ = [
     "BackgroundPollTool",
     "CronScheduler",
     "CronScheduleTool",
+    "PluginLoader",
     "create_default_registry",
 ]
 
@@ -115,4 +119,8 @@ def __getattr__(name: str) -> Any:
         return {"CronScheduler": CronScheduler, "CronScheduleTool": CronScheduleTool}[
             name
         ]
+    if name == "PluginLoader":
+        from tiny_claude_code.tools.plugin import PluginLoader
+
+        return PluginLoader
     raise AttributeError(name)
