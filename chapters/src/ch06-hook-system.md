@@ -134,6 +134,44 @@ hooks.trigger("PostToolUse", tool_name=name, tool_input=input, result=output)
 hooks.trigger("Stop", messages=messages, response=final_text)
 ```
 
+## 实现路线
+
+### 第一步：实现事件到回调的映射
+
+HookSystem 本质上是 `event -> callbacks`。先让注册和触发跑通，再考虑优先级和短路。
+
+### 第二步：加入 priority
+
+权限类 hook 通常要比日志类 hook 更早执行。priority 表达的是扩展点之间的依赖关系，不只是排序装饰。
+
+### 第三步：把短路写进 trigger
+
+短路语义应该由 HookSystem 统一处理，而不是散落在 agent loop 里。这样主循环不需要知道哪个 hook 会阻止执行。
+
+### 第四步：把权限迁移成 hook
+
+迁移完成后，agent loop 不再直接调用权限规则。它只触发 `PreToolUse`，然后根据返回值决定是否继续 dispatch。
+
+## 测试讲解
+
+本章测试要分两层：HookSystem 自身是否正确，以及 agent loop 是否在正确的生命周期点触发事件。前者测 priority、短路和空 hook；后者测工具执行前后与最终停止事件。
+
+最关键的测试是：当 `PreToolUse` 返回拒绝结果时，真实工具 handler 没有被调用。这能证明 Hook 不只是记录日志，而是真的参与了控制流。
+
+## 常见错误
+
+### Hook payload 暴露太多内部对象
+
+Hook 只应该拿到事件需要的信息。把整个 agent 内部状态都暴露出去，会让扩展点反过来绑死主循环结构。
+
+### 所有事件都允许短路
+
+`PreToolUse` 短路合理；`PostToolUse` 通常只是观察。短路语义必须和事件含义匹配。
+
+### priority 方向不清楚
+
+项目必须明确“数字越大越早”还是“数字越小越早”，并用测试固定下来。
+
 ## 运行测试
 
 ```bash
