@@ -127,6 +127,44 @@ CLI 支持：
 | 长期知识 | 摘要里临时保留 | memory 文件跨任务复用 |
 | 加载策略 | 摘要 + recent tail | session 全量恢复，memory 按需检索 |
 
+## 实现路线
+
+### 第一步：定义 session 文件格式
+
+Session 至少要保存 `messages` 和 `metadata`。metadata 用于列表展示和恢复选择，messages 用于真正恢复对话。
+
+### 第二步：实现 save/load/list
+
+先让 session 可以完整落盘和恢复，再接 CLI。不要一开始就把 `--resume` 写进入口逻辑里，否则很难单独测试。
+
+### 第三步：定义 memory 文件格式
+
+Memory 适合用 Markdown 加 frontmatter。正文适合人读，frontmatter 适合程序检索。
+
+### 第四步：启动时注入相关 memory
+
+不要无差别注入所有 memory。先用简单关键字匹配，后续再考虑向量检索或更复杂的索引。
+
+## 测试讲解
+
+Session 测试要证明 messages 能原样恢复，包括 tool_use 和 tool_result 这类结构化内容。只测普通文本消息不够。
+
+Memory 测试要证明检索是相关的，而不是把所有记忆都塞进 system prompt。否则 memory 越多，agent 越容易被无关信息干扰。
+
+## 常见错误
+
+### 把 session 当 memory
+
+Session 是一次任务的详细轨迹，不适合长期注入所有未来任务。它太细，会污染后续上下文。
+
+### 把 memory 当 transcript
+
+Memory 应该是稳定事实，不应该保存每一轮对话细节。否则 memory 会快速膨胀并失去检索价值。
+
+### 恢复 session 时丢掉工具消息
+
+只恢复 user/assistant 文本会破坏 agent loop 的状态。tool_use 和 tool_result 也是对话协议的一部分。
+
 ## 运行测试
 
 ```bash
