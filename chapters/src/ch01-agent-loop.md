@@ -297,10 +297,9 @@ python scripts/dev.py test --ch 01
 python scripts/dev.py check
 ```
 
-期望：
+在完整学生骨架里，这个命令会列出后续章节尚未实现的 TODO。完成全书后，期望输出才会变成：
 
 ```text
-6 passed
 All TODOs completed!
 ```
 
