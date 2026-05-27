@@ -15,7 +15,7 @@
 - agent loop 最大轮次保护
 - malformed `tool_use` 不让循环崩溃
 
-## 知识串讲：错误恢复是运行时控制层
+## 为什么错误恢复不能只靠 try/except
 
 真实 LLM 应用里，失败不是异常情况，而是常态：API 可能限流，模型可能过载，响应可能超出 token limit，tool_use 也可能格式不完整。一个 agent 如果只在 happy path 上能跑，进入真实项目后会非常脆弱。
 

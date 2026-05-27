@@ -6,7 +6,7 @@
 
 当任务很大时，主 agent 不应该把所有细节都塞进自己的上下文。本章实现 `SubAgent` 和 `SubAgent` 工具，让主 agent 可以委派一个聚焦子任务，子 agent 使用独立消息历史完成工作，只把摘要返回给主 agent。
 
-## 知识串讲：Subagent 是上下文隔离
+## 为什么需要 Subagent
 
 Subagent 不是“再开一个更聪明的模型”，而是给某个子任务创建独立上下文。父 agent 可以把一个边界清楚的问题交给子 agent，子 agent 在自己的消息历史里探索，最后只把总结结果返回给父 agent。
 
