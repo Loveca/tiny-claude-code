@@ -4,14 +4,14 @@ Build your own coding agent, step by step.
 
 `tiny-claude-code` is a hands-on tutorial project for learning how a coding agent works from the inside: an LLM, a loop, tools, file access, safety, context, memory, tasks, and collaboration.
 
-Current release: Part 5. The repository implements the full ch01-ch15 curriculum plus the checkpoint exercises, with the roadmap laid out in [docs/ROADMAP.md](./docs/ROADMAP.md).
+Current release: Part 5. The repository publishes the full ch01-ch15 curriculum plus checkpoint exercises. `src/tiny_claude_code/` is the student skeleton, and `src/tiny_claude_code_ref/` is the complete reference implementation.
 
 ## What You Get
 
-- A minimal CLI coding agent
-- Shell, file read/write, search, and tool registry support
+- A student skeleton for building a minimal CLI coding agent
+- TODO stubs for shell, file read/write, search, registry, safety, context, memory, tasks, and extensions
 - Mock-LLM chapter tests that run without an API key
-- A real LLM REPL for hands-on verification
+- A complete reference implementation for comparison and hands-on verification
 - A checkpoint project that lets the agent fix a real bug
 - Permission hooks and basic LLM error recovery
 - Context compaction, session resume, and project memory
@@ -21,7 +21,7 @@ Current release: Part 5. The repository implements the full ch01-ch15 curriculum
 
 ## Current Release
 
-What is implemented now:
+What is released now:
 
 - ch01: Agent loop and CLI
 - ch02: Shell tool
@@ -40,7 +40,7 @@ What is implemented now:
 - ch14: Real project challenge
 - ch15: Skills and plugin extension
 
-The roadmap is now implemented end to end. Future work can focus on polishing UX, expanding examples, and hardening real-world safety.
+The student package intentionally contains `raise NotImplementedError` TODOs. The roadmap is implemented end to end in the reference package.
 
 ## Quick Start
 
@@ -76,11 +76,13 @@ python scripts/dev.py test --ch 15
 python scripts/dev.py test --all
 ```
 
-### Real agent
+### Student agent
 
 ```bash
 python scripts/dev.py run
 ```
+
+This uses `src/tiny_claude_code/`, so it will only work after you implement the required TODOs.
 
 Resume the latest session:
 
@@ -102,6 +104,8 @@ Inside the REPL:
 ```bash
 python scripts/dev.py run --ref
 ```
+
+Use this when you want to see the completed agent behavior before or after doing the exercises.
 
 ### Check remaining TODOs
 
@@ -127,7 +131,7 @@ python scripts/dev.py check
 # Read the chapter
 cat chapters/src/ch01-agent-loop.md
 
-# Implement or compare
+# Implement the TODOs, or compare with the reference
 diff src/tiny_claude_code/agent.py src/tiny_claude_code_ref/agent.py
 
 # Run released tests
@@ -153,7 +157,7 @@ The checkpoint project is deliberately failing at first and is not part of the d
 ```text
 tiny-claude-code/
   src/
-    tiny_claude_code/       # student implementation
+    tiny_claude_code/       # student skeleton with TODOs
     tiny_claude_code_ref/   # reference implementation
   chapters/src/             # tutorial chapters
   examples/simple-bug/      # checkpoint exercise
@@ -168,10 +172,10 @@ tiny-claude-code/
 
 ## Notes
 
-- `python -m pytest` runs the released `tests/` suite by default.
+- `python -m pytest` runs the released `tests/` suite by default. It is expected to fail until the corresponding TODOs are implemented.
 - `examples/simple-bug/`, `examples/buggy-python-project/`, and `examples/tiny-web-app/` are meant to fail until the agent fixes them.
 - Runtime session and memory files are stored under `.tiny-claude-code/`.
-- The full roadmap is implemented, but the project remains intentionally small enough to study.
+- The full roadmap is implemented in `tiny_claude_code_ref/`, while `tiny_claude_code/` remains the exercise workspace.
 
 ## License
 
