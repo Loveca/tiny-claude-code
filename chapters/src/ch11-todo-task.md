@@ -6,6 +6,38 @@
 
 Part 3 让 agent 能保存和压缩上下文，但它还没有真正的任务状态。本章实现 `TaskManager` 和 `TodoWrite` 工具，让 agent 可以创建 todo、更新进度、处理依赖，并把任务状态持久化到项目目录。
 
+## 问题：长任务需要可见进度
+
+没有 Todo 的 agent 也能完成简单任务，但一旦任务超过三五步，它就容易出现几类问题：重复做已完成的事，跳过验证步骤，在用户插话后忘记当前阶段，或者把“正在做什么”藏在自然语言回复里。
+
+任务状态如果只存在于模型上下文里，会受上下文压缩、摘要遗漏和注意力漂移影响。Todo 工具把状态移到 harness 里：
+
+```text
+LLM proposes plan
+      |
+      v
+TodoWrite tool
+      |
+      v
+TaskManager persists state
+      |
+      v
+reminder/status re-enters future turns
+```
+
+这让计划变成可检查数据，而不是聊天记录里的愿望。
+
+## 解决方案：让计划成为一个工具
+
+TodoWrite 和 ShellTool、ReadTool 一样是工具。区别在于它不改变项目代码，而是改变 agent 自己的执行状态。模型需要显式调用它来声明计划和进度。
+
+这有两个好处：
+
+- harness 可以校验状态，例如只允许一个 `in_progress`。
+- 用户和后续模型轮次可以看到同一份任务状态。
+
+真实 agent 的 Todo 不只是 UI 功能，它是运行时控制的一部分。
+
 ## 为什么 Todo 要存在于模型之外
 
 长任务里，模型很容易在局部细节中丢失全局目标。Todo 系统的作用不是替模型思考，而是把计划状态外部化：哪些事待做，哪件事正在做，哪些事已经完成。它给 agent 一个可检查、可恢复、可向用户解释的任务骨架。
@@ -24,6 +56,30 @@ Part 3 让 agent 能保存和压缩上下文，但它还没有真正的任务状
 - `blocked`：被依赖阻塞
 
 系统保证同一时间最多只有一个 `in_progress`。如果一个 todo 设置了 `blocked_by`，依赖未完成时会自动变成 `blocked`；依赖完成后会回到 `pending`。
+
+## 工作原理
+
+TaskManager 的更新不是简单覆盖列表，而是先规范化、再校验、再持久化：
+
+```python
+def update(items):
+    normalized = normalize_items(items)
+    ensure_only_one_in_progress(normalized)
+    resolve_blocked_items(normalized)
+    save_each_item(normalized)
+    return render_status(normalized)
+```
+
+reminder 机制则在模型长时间不更新 todo 时介入。它不是强迫模型照做，而是把“你已经很久没更新计划了”变成下一轮上下文中的观察，帮助模型回到任务轨道。
+
+## 相对 ch10 的变化
+
+| 组件 | ch10 | ch11 |
+| --- | --- | --- |
+| 持久化内容 | 对话和长期记忆 | 显式任务状态 |
+| 模型行为 | 自然语言描述计划 | 通过 TodoWrite 更新计划 |
+| 状态校验 | 基本文件读写 | 单一 in_progress、依赖检查 |
+| 恢复价值 | 恢复对话 | 恢复任务进度 |
 
 ## 持久化
 

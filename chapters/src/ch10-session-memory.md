@@ -9,6 +9,30 @@
 - 退出 CLI 后，下一次还能恢复会话。
 - 项目经验可以被保存成长期记忆，之后启动时注入 system prompt。
 
+## 问题：压缩解决不了进程退出和跨任务经验
+
+Context 和 compact 都发生在一次运行中的消息列表里。如果用户关掉 CLI，内存里的 messages 就没了；如果明天重新打开项目，agent 也不会自然记得“这个项目用 pytest”“不要提交 `.tiny-claude-code/` 目录”这类稳定事实。
+
+这里其实有两类状态：
+
+- 这次对话的完整轨迹：用户说了什么，模型调用了哪些工具，结果是什么。
+- 跨任务仍然有价值的知识：项目约定、用户偏好、常用验证命令。
+
+前者需要 session，后者需要 memory。
+
+## 解决方案：把短期轨迹和长期知识分层保存
+
+```text
+.tiny-claude-code/
+  sessions/
+    session-id.json      # messages + metadata
+  memory/
+    project.md           # long-lived facts
+    preferences.md
+```
+
+Session 负责恢复“这次任务进行到哪”。Memory 负责在新任务开始时注入“这个项目有哪些稳定背景”。分开以后，agent 可以恢复旧对话，也可以在全新任务里只加载相关长期知识。
+
 ## 为什么 Session 和 Memory 要分开
 
 Session 是一次任务的运行轨迹，Memory 是跨任务复用的稳定事实。前者像工作日志，记录用户输入、模型回复、工具调用和结果；后者像项目偏好或长期知识，例如“这个仓库用 pytest 验证”“不要自动格式化某些生成文件”。
@@ -46,6 +70,25 @@ tiny-claude-code --resume
 
 `--resume` 不带参数时恢复最近一次 session；带参数时恢复指定 session id。
 
+## 工作原理
+
+保存 session 时，关键是把消息和元数据一起落盘。元数据用于列表展示和恢复选择，messages 用于真正恢复上下文：
+
+```python
+session_manager.save(
+    session_id,
+    messages=messages,
+    metadata={
+        "created_at": now,
+        "updated_at": now,
+        "cwd": str(workspace),
+        "title": first_user_prompt[:80],
+    },
+)
+```
+
+恢复时不要把 session 当作 memory 注入 system prompt，而是直接恢复 messages。它仍然是对话历史的一部分。
+
 ## Memory
 
 `MemoryManager` 把长期记忆保存到：
@@ -74,6 +117,15 @@ CLI 支持：
 ```
 
 启动时，相关 memory 会被注入 system prompt，帮助 agent 继承项目经验。
+
+## 相对 ch09 的变化
+
+| 组件 | ch09 | ch10 |
+| --- | --- | --- |
+| 状态范围 | 当前 active context | 磁盘持久化状态 |
+| 恢复能力 | 压缩后继续当前对话 | CLI 退出后恢复 session |
+| 长期知识 | 摘要里临时保留 | memory 文件跨任务复用 |
+| 加载策略 | 摘要 + recent tail | session 全量恢复，memory 按需检索 |
 
 ## 运行测试
 

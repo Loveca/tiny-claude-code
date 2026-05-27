@@ -8,6 +8,37 @@
 
 当前实现的 `PermissionManager` 会作为 `PreToolUse` hook 注册到 agent loop 中。这样权限逻辑可以拦截工具调用，但不用散落到每个工具内部。
 
+## 问题：能力扩大以后，风险也扩大
+
+Part 1 的目标是让 agent 能动手。它现在可以跑命令、读文件、写文件、搜索代码，这些都是 coding agent 必须具备的能力。但能力一旦接入真实文件系统，就不再只是“生成文本是否正确”的问题，而是“错误动作会不会造成真实损失”的问题。
+
+一个典型失败路径是这样的：
+
+```text
++--------+       +-----------+       +----------------+
+|  LLM   | ----> | tool_use  | ----> | Shell / Write  |
++--------+       +-----------+       +----------------+
+     模型认为这是合理动作          本地环境真实执行副作用
+```
+
+如果中间没有权限层，模型的一次误判就会直接变成文件删除、越界写入或危险命令。提示词可以降低概率，但不能成为安全边界；安全边界必须由执行工具的 harness 控制。
+
+## 解决方案：把工具执行变成可裁决动作
+
+本章在工具执行前插入一个裁决点。agent loop 仍然负责解析 `tool_use`，但在调用 `registry.dispatch(...)` 之前，先把工具名和参数交给 `PermissionManager`。
+
+```text
+tool_use
+   |
+   v
+[PermissionManager]
+   | allow -> registry.dispatch(...)
+   | ask   -> user confirms, then dispatch or deny
+   | deny  -> return tool_result with denial reason
+```
+
+这样模型不会失去行动能力，但每次行动都会先经过本地策略检查。权限系统返回的拒绝原因仍然会作为 `tool_result` 写回模型，让模型可以换一种安全做法继续完成任务。
+
 ## 为什么权限必须在执行前判断
 
 到 ch04 为止，模型已经可以调用工具。问题也随之出现：模型可能请求删除文件、写入敏感路径，或者运行带副作用的命令。真实 agent 不能只在 system prompt 里写“请谨慎操作”，因为 prompt 是给模型看的约束，真正的安全边界必须由本地 harness 在执行前强制检查。
@@ -36,6 +67,40 @@
 - deny list 命中直接拒绝。
 - `rm temp.txt` 这类破坏性 shell 命令会询问用户。
 - 用户输入 `always` 后，同一工具和同一参数下次自动通过。
+
+## 工作原理
+
+权限检查是一个短路管线。越确定危险的规则越靠前，越需要人类判断的规则越靠后：
+
+```python
+def check(tool_name, tool_input):
+    denial = check_hard_deny(tool_name, tool_input)
+    if denial:
+        return PermissionDecision("deny", denial)
+
+    denial = check_workspace_boundary(tool_name, tool_input)
+    if denial:
+        return PermissionDecision("deny", denial)
+
+    if matches_remembered_allow(tool_name, tool_input):
+        return PermissionDecision("allow")
+
+    if needs_user_confirmation(tool_name, tool_input):
+        return ask_user(tool_name, tool_input)
+
+    return PermissionDecision("allow")
+```
+
+这里有两个设计点需要记住。第一，`deny` 必须短路，不能再进入用户确认，因为硬拒绝代表程序已经知道该动作越过边界。第二，`always` 不能只记工具名，否则一次授权 `write_file` 可能会意外覆盖所有写入操作；它至少要绑定工具名和参数摘要。
+
+## 相对 ch04 的变化
+
+| 组件 | ch04 | ch05 |
+| --- | --- | --- |
+| 工具执行 | registry 直接 dispatch | dispatch 前先经过权限检查 |
+| 安全边界 | 工具内部的基础校验 | 统一的 PermissionManager |
+| 用户参与 | 无 | 危险但可接受的动作会询问用户 |
+| 失败回填 | 未知工具或执行失败 | 权限拒绝也作为 tool_result 回填 |
 
 ## 接入方式
 
