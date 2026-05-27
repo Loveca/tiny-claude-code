@@ -4,7 +4,7 @@ Build your own coding agent, step by step.
 
 `tiny-claude-code` is a hands-on tutorial project for learning how a coding agent works from the inside: an LLM, a loop, tools, file access, safety, context, memory, tasks, and collaboration.
 
-Current release: Part 4. The repository implements ch01-ch13 plus the first bug-fix exercise, with the rest of the curriculum laid out in [docs/ROADMAP.md](./docs/ROADMAP.md).
+Current release: Part 5. The repository implements the full ch01-ch15 curriculum plus the checkpoint exercises, with the roadmap laid out in [docs/ROADMAP.md](./docs/ROADMAP.md).
 
 ## What You Get
 
@@ -16,6 +16,7 @@ Current release: Part 4. The repository implements ch01-ch13 plus the first bug-
 - Permission hooks and basic LLM error recovery
 - Context compaction, session resume, and project memory
 - Todo tracking, subagents, background tasks, and cron scheduling
+- Real challenge projects, skill loading, and Python tool plugins
 - Chapter-by-chapter教材 under [chapters/src/](./chapters/src)
 
 ## Current Release
@@ -36,10 +37,10 @@ What is implemented now:
 - ch11: Todo and task system
 - ch12: Subagent delegation
 - ch13: Background tasks and cron
+- ch14: Real project challenge
+- ch15: Skills and plugin extension
 
-What is planned next:
-
-- ch14-ch15, as described in [docs/ROADMAP.md](./docs/ROADMAP.md)
+The roadmap is now implemented end to end. Future work can focus on polishing UX, expanding examples, and hardening real-world safety.
 
 ## Quick Start
 
@@ -70,6 +71,8 @@ python scripts/dev.py test --ch 10
 python scripts/dev.py test --ch 11
 python scripts/dev.py test --ch 12
 python scripts/dev.py test --ch 13
+python scripts/dev.py test --ch 14
+python scripts/dev.py test --ch 15
 python scripts/dev.py test --all
 ```
 
@@ -91,6 +94,7 @@ Inside the REPL:
 /compact
 /memory add "Testing" "Run tests with pytest -q"
 /memory list
+/skill list
 ```
 
 ### Reference implementation
@@ -153,6 +157,10 @@ tiny-claude-code/
     tiny_claude_code_ref/   # reference implementation
   chapters/src/             # tutorial chapters
   examples/simple-bug/      # checkpoint exercise
+  examples/buggy-python-project/
+  examples/tiny-web-app/
+  examples/plugins/
+  examples/skills/
   tests/                    # released chapter tests
   tests_all/                # full chapter test set
   scripts/dev.py            # test/run/check helper
@@ -161,9 +169,9 @@ tiny-claude-code/
 ## Notes
 
 - `python -m pytest` runs the released `tests/` suite by default.
-- `examples/simple-bug/` is meant to fail until the agent fixes it.
+- `examples/simple-bug/`, `examples/buggy-python-project/`, and `examples/tiny-web-app/` are meant to fail until the agent fixes them.
 - Runtime session and memory files are stored under `.tiny-claude-code/`.
-- The chapter roadmap is intentionally longer than the current implementation; the repository is being published in a checkpointed state.
+- The full roadmap is implemented, but the project remains intentionally small enough to study.
 
 ## License
 

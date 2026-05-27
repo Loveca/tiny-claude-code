@@ -22,6 +22,7 @@ from tiny_claude_code_ref.llm import LLMClient
 from tiny_claude_code_ref.memory import MemoryManager
 from tiny_claude_code_ref.permissions import PermissionManager
 from tiny_claude_code_ref.session import SessionManager
+from tiny_claude_code_ref.skills import SkillLoader
 from tiny_claude_code_ref.tools import create_default_registry
 
 
@@ -32,10 +33,14 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_system_prompt(workspace: Path, memory_context: str = "") -> str:
+def build_system_prompt(
+    workspace: Path, memory_context: str = "", skill_context: str = ""
+) -> str:
     system = SYSTEM_PROMPT.format(workspace=workspace)
     if memory_context:
         system += "\n\n" + memory_context
+    if skill_context:
+        system += "\n\n" + skill_context
     return system
 
 
@@ -63,12 +68,24 @@ def main(argv: list[str] | None = None) -> None:
         const="latest",
         help="Resume the latest session or the given session id",
     )
+    parser.add_argument(
+        "--skill",
+        action="append",
+        default=[],
+        help="Load a named skill from .tiny-claude-code/skills",
+    )
+    parser.add_argument(
+        "--plugins",
+        default=".tiny-claude-code/plugins",
+        help="Directory containing Python tool plugins",
+    )
     args = parser.parse_args(argv)
 
     workspace = Path.cwd()
     client = LLMClient()
     sessions = SessionManager(workspace)
     memory = MemoryManager(workspace)
+    skills = SkillLoader(workspace)
     background_manager = BackgroundManager(workspace)
     cron_scheduler = CronScheduler(workspace)
     if args.resume:
@@ -86,8 +103,13 @@ def main(argv: list[str] | None = None) -> None:
         client=client,
         background_manager=background_manager,
         cron_scheduler=cron_scheduler,
+        plugin_dir=workspace / args.plugins,
     )
-    system = build_system_prompt(workspace, memory.build_system_context())
+    system = build_system_prompt(
+        workspace,
+        memory.build_system_context(),
+        skills.build_system_context(args.skill),
+    )
     hooks = HookSystem()
     permissions = PermissionManager(workspace=workspace)
     tool_log = ToolLogHook()
@@ -120,7 +142,14 @@ def main(argv: list[str] | None = None) -> None:
             continue
         if user_input.startswith("/memory"):
             print(handle_memory_command(memory, user_input))
-            system = build_system_prompt(workspace, memory.build_system_context())
+            system = build_system_prompt(
+                workspace,
+                memory.build_system_context(),
+                skills.build_system_context(args.skill),
+            )
+            continue
+        if user_input.startswith("/skill"):
+            print(handle_skill_command(skills, user_input))
             continue
 
         prompt_override = hooks.trigger(
@@ -159,6 +188,18 @@ def handle_memory_command(memory: MemoryManager, command: str) -> str:
         index = memory.build_index()
         return index.read_text(encoding="utf-8")
     return 'Usage: /memory add "title" "content" or /memory list'
+
+
+def handle_skill_command(skills: SkillLoader, command: str) -> str:
+    parts = shlex.split(command)
+    if len(parts) >= 2 and parts[1] == "list":
+        found = skills.list_skills()
+        if not found:
+            return "No skills found."
+        return "\n".join(f"- {skill.name}: {skill.summary}" for skill in found)
+    if len(parts) >= 3 and parts[1] == "show":
+        return skills.load(parts[2])
+    return 'Usage: /skill list or /skill show "name"'
 
 
 if __name__ == "__main__":
