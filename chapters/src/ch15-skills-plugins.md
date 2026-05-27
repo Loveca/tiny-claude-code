@@ -11,6 +11,34 @@
 
 这让 agent 的核心保持小，但可以按项目需要扩展能力。
 
+## 问题：核心 agent 不可能内置所有知识和能力
+
+一个固定 agent 可以完成通用任务，但真实使用时会遇到大量场景差异：Python 调试、前端构建、数据库迁移、浏览器操作、公司内部系统、特定代码规范。把所有知识写进核心 prompt 会让上下文膨胀；把所有能力写进核心代码会让工具边界失控。
+
+需要分清两件事：
+
+- 有些扩展只是“告诉 agent 怎么做”，例如调试流程、代码审查清单。
+- 有些扩展是“让 agent 能做新事情”，例如调用浏览器、访问 GitHub、查询外部 API。
+
+前者更适合 Skill，后者更适合 Plugin。
+
+## 解决方案：知识按需加载，能力显式注册
+
+```text
+Skill
+  SKILL.md
+  references/
+  scripts/
+  -> injected into prompt when relevant
+
+Plugin
+  Python module / connector
+  register_tools(registry)
+  -> adds executable tools
+```
+
+Skill 的重点是渐进披露：先读短说明，需要时再打开模板或脚本。Plugin 的重点是明确能力边界：注册了哪些工具、需要哪些权限、失败时如何报告。
+
 ## 为什么要区分 Skills 和 Plugins
 
 走到 ch15，agent 已经有了固定的一组工具和运行时能力。下一步问题是扩展：不同项目、团队和任务需要不同知识，不可能全部写进核心代码，也不应该全部塞进 system prompt。
@@ -20,6 +48,34 @@ Skill 更像可加载的知识包。它告诉 agent 在某类任务里应该遵�
 Plugin 更像能力边界清晰的外部系统。它可能提供 MCP 工具、连接器、浏览器能力或第三方服务访问。和 Skill 相比，Plugin 不只是“告诉模型怎么做”，还会把新的可执行能力接入 harness，因此更需要权限、审计和配置边界。
 
 这一区分很重要：知识可以指导模型，能力必须由本地运行时控制。把二者分开，agent 才能既容易扩展，又不把安全边界交给提示词。
+
+## 工作原理
+
+SkillLoader 可以先扫描目录，读取每个 skill 的名称和简介。只有当用户请求或模型需要时，才加载完整 `SKILL.md`：
+
+```python
+skills = skill_loader.list_skills()
+selected = skill_loader.load("python-debugging")
+system_prompt += selected.instructions
+```
+
+PluginLoader 则走工具注册路径：
+
+```python
+module = import_plugin(path)
+module.register_tools(registry)
+```
+
+这两个入口都能扩展 agent，但风险级别不同。Skill 主要消耗上下文并影响模型行为；Plugin 会增加真实可执行动作，所以必须经过工具 schema、权限系统和 Hook 事件。
+
+## 相对 ch14 的变化
+
+| 组件 | ch14 | ch15 |
+| --- | --- | --- |
+| 目标 | 用现有 agent 做真实挑战 | 让 agent 可扩展 |
+| 知识来源 | 固定教材和 prompt | 按需加载 Skills |
+| 能力来源 | 内置工具 | Plugins 注册新工具 |
+| 安全重点 | 挑战中观察边界 | 扩展也必须走权限和工具协议 |
 
 ## Skills
 

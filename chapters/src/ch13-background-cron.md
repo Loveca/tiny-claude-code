@@ -11,6 +11,36 @@
 
 这让 agent 可以发起长时间运行的命令，同时继续对话；也可以记录未来需要触发的任务。
 
+## 问题：慢命令会卡住交互
+
+很多开发命令不是瞬间完成的：完整测试套件、构建、启动 dev server、长时间 lint、日志监控。如果 agent 每次都同步等待，用户只能看着 CLI 卡住，模型也无法处理新的输入或继续其他工作。
+
+同步执行适合短命令：
+
+```text
+tool_use(shell: "pytest -q")
+        |
+        v
+wait until finished
+        |
+        v
+tool_result
+```
+
+但长命令更适合拆成“提交任务”和“稍后观察结果”。
+
+## 解决方案：把慢操作变成可轮询任务
+
+BackgroundManager 让 agent 先拿到一个 task id，然后继续工作：
+
+```text
+submit(command) -> task_id
+poll(task_id)   -> running / completed / failed
+result(task_id) -> stdout / stderr / exit_code
+```
+
+当后台任务完成时，它的结果可以作为下一轮观察注入 messages。这样 agent 不需要一直阻塞等待，也不会丢失命令结果。
+
 ## 为什么需要后台任务
 
 有些命令很慢：测试套件、构建、长时间服务、文件监控。如果主 agent 每次都阻塞等待，用户体验会变差，模型也会被迫把“等待”当作主要工作。后台任务的价值是让慢操作独立运行，主循环继续处理用户输入和其他观察。
@@ -37,6 +67,22 @@ BackgroundPoll
 
 CLI 会在下一轮 agent 执行前，把已完成的后台任务结果注入消息历史。
 
+## 工作原理
+
+后台任务的最小实现可以用线程或子进程管理：
+
+```python
+task_id = background.submit("pytest -q")
+
+while True:
+    status = background.poll(task_id)
+    if status.done:
+        result = background.get_result(task_id)
+        break
+```
+
+关键是状态要可查询，结果要可回填。否则后台任务只是“把命令扔出去”，agent 无法可靠地基于结果继续推理。
+
 ## Cron
 
 `CronScheduler` 支持五字段表达式：
@@ -62,6 +108,15 @@ CLI 会在下一轮 agent 执行前，把已完成的后台任务结果注入消
 ```text
 CronSchedule
 ```
+
+## 相对 ch12 的变化
+
+| 组件 | ch12 | ch13 |
+| --- | --- | --- |
+| 并行方式 | 子 agent 探索子任务 | 后台进程执行慢命令 |
+| 返回时机 | 子 agent 完成后立即返回摘要 | 主循环稍后轮询或接收通知 |
+| 状态保存 | 子上下文临时存在 | task/cron 状态可持久化 |
+| 典型用途 | 搜索、调查、分析 | 长测试、服务、定时提醒 |
 
 ## 运行测试
 

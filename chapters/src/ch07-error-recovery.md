@@ -15,6 +15,34 @@
 - agent loop 最大轮次保护
 - malformed `tool_use` 不让循环崩溃
 
+## 问题：真实 LLM 调用不是稳定函数
+
+到 ch06 为止，agent 的结构已经比较干净，但它默认模型调用总能成功、响应总是格式正确、循环总会结束。真实环境不会这么配合：API 会限流，服务会过载，返回内容可能超出窗口，模型也可能生成缺字段的 `tool_use`。
+
+如果没有恢复策略，任何一次外部抖动都会让 agent 直接失败：
+
+```text
+client.messages.create(...)
+   |
+   +-- 429 rate limit      -> retry later
+   +-- 529 overload        -> wait and retry
+   +-- context too large   -> compact / reduce
+   +-- malformed tool_use  -> return structured error
+```
+
+这些不是某个工具的业务错误，而是运行时错误。它们应该由 agent runtime 统一处理。
+
+## 解决方案：按错误类型决定下一步
+
+错误恢复不是简单重试。不同错误需要不同动作：
+
+- 限流说明当前请求频率太高，应等待后重试。
+- 过载说明服务端临时不可用，应尊重 `Retry-After` 或使用较短重试。
+- token limit 说明上下文超预算，应触发上下文管理或压缩。
+- malformed tool_use 说明模型输出不满足协议，应把结构化错误回填给模型。
+
+这让 agent 的行为从“报错退出”变成“把错误变成下一轮可用观察”。
+
 ## 为什么错误恢复不能只靠 try/except
 
 真实 LLM 应用里，失败不是异常情况，而是常态：API 可能限流，模型可能过载，响应可能超出 token limit，tool_use 也可能格式不完整。一个 agent 如果只在 happy path 上能跑，进入真实项目后会非常脆弱。
@@ -58,6 +86,35 @@ ErrorHandler(fallback_models=["backup-model"])
 ```
 
 handler 会临时设置 `client.model` 再重试。
+
+## 工作原理
+
+`ErrorHandler` 包在 LLM 调用外层，但不吞掉所有异常。它只处理自己认识的错误，并且每类错误都有最大次数：
+
+```python
+def chat_with_recovery(call):
+    for attempt in range(max_retries):
+        try:
+            return call()
+        except RateLimitError:
+            sleep(backoff(attempt))
+        except OverloadError as exc:
+            sleep(exc.retry_after or backoff(attempt))
+        except TokenLimitError:
+            raise NeedsCompaction()
+    raise
+```
+
+agent loop 还需要独立的轮次上限，因为模型可能一直要求工具调用。这个保护和 API 重试不是一回事：重试解决“请求失败”，轮次上限解决“循环不收敛”。
+
+## 相对 ch06 的变化
+
+| 组件 | ch06 | ch07 |
+| --- | --- | --- |
+| LLM 调用 | 直接调用 client | 通过 ErrorHandler 包装 |
+| 循环保护 | 依赖模型停止 | 增加最大轮次 |
+| tool_use 协议 | 默认格式正确 | malformed 时回填错误 |
+| 失败处理 | 异常冒泡 | 可恢复错误转成控制动作 |
 
 ## Agent Loop 保护
 

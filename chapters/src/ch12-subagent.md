@@ -6,6 +6,36 @@
 
 当任务很大时，主 agent 不应该把所有细节都塞进自己的上下文。本章实现 `SubAgent` 和 `SubAgent` 工具，让主 agent 可以委派一个聚焦子任务，子 agent 使用独立消息历史完成工作，只把摘要返回给主 agent。
 
+## 问题：不是所有探索都应该进入主上下文
+
+复杂任务里经常会有旁路探索：搜索所有 TODO、调查某个失败测试、阅读一组不确定相关的文件。这些探索可能产生大量中间输出，但主 agent 最终只需要结论。
+
+如果把所有探索都放进主上下文，会出现两个问题：
+
+- 主线被中间细节淹没，后续决策成本变高。
+- compact 时更难判断哪些信息属于当前主任务。
+
+Subagent 的核心价值就是把这类探索隔离出去。
+
+## 解决方案：子任务独立运行，父任务只收摘要
+
+```text
+Parent agent
+   |
+   | calls SubAgentTool(task)
+   v
+Child agent loop with fresh messages
+   |
+   | uses selected tools
+   v
+summary result
+   |
+   v
+Parent receives one tool_result
+```
+
+父 agent 不需要读取子 agent 的完整 transcript。它只需要子任务结论、关键证据和建议下一步。
+
 ## 为什么需要 Subagent
 
 Subagent 不是“再开一个更聪明的模型”，而是给某个子任务创建独立上下文。父 agent 可以把一个边界清楚的问题交给子 agent，子 agent 在自己的消息历史里探索，最后只把总结结果返回给父 agent。
@@ -13,6 +43,33 @@ Subagent 不是“再开一个更聪明的模型”，而是给某个子任务�
 这种设计解决的是上下文污染问题。比如父 agent 正在实现功能，同时需要调查一段测试失败原因；如果把所有探索输出都塞回父上下文，主线会被大量细节淹没。Subagent 让探索发生在旁路，父 agent 只接收结论、证据和建议动作。
 
 边界也很重要：子 agent 不应该无限递归创建更多 agent，也不应该把完整子 transcript 原样灌回父上下文。本章的深度限制和摘要返回，就是为了保留隔离带来的收益。
+
+## 工作原理
+
+SubAgentTool 可以复用现有 `agent_loop`，但传入新的 messages 和受控工具集合：
+
+```python
+def execute(task):
+    child_messages = [{"role": "user", "content": task}]
+    result = agent_loop(
+        messages=child_messages,
+        tools=child_tools,
+        max_turns=child_max_turns,
+        depth=parent_depth + 1,
+    )
+    return summarize_child_result(result)
+```
+
+这里的关键不是代码多复杂，而是边界要明确：限制轮次、限制递归深度、控制可用工具、只返回摘要。
+
+## 相对 ch11 的变化
+
+| 组件 | ch11 | ch12 |
+| --- | --- | --- |
+| 任务拆分 | Todo 状态拆分 | 可委派子 agent 执行 |
+| 上下文 | 单一消息历史 | 父子上下文隔离 |
+| 返回结果 | 工具直接返回执行结果 | 子 agent 返回摘要 |
+| 风险控制 | todo 校验 | max turns + recursion guard |
 
 ## 核心概念
 

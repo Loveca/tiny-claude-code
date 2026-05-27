@@ -15,6 +15,42 @@ ch05 已经实现了权限检查。如果把权限、日志、停止事件、未
 
 其中 `PreToolUse` 返回非 `None` 会短路，通常用于拒绝工具调用。
 
+## 问题：主循环不能承受所有横切逻辑
+
+ch05 里权限已经能工作，但如果直接把权限、日志、审计、通知、压缩、统计都塞进 `agent_loop`，主循环会越来越难读。agent loop 最重要的职责是维持模型和工具之间的往返协议，它不应该知道每一种附加能力的细节。
+
+可以把这类逻辑理解成“围绕循环发生”的事情：
+
+```text
+User prompt submit
+        |
+        v
+    agent loop
+        |
+  before tool use  -> permission / audit
+        |
+  after tool use   -> log / metrics / notification
+        |
+        v
+Stop
+```
+
+这些点不是业务工具本身，却又确实需要参与执行流程。Hook 系统就是给它们一个稳定入口。
+
+## 解决方案：把生命周期事件显式化
+
+本章把循环中的关键位置命名为事件，并允许外部 callback 注册到事件上。agent loop 只负责触发事件，不负责知道事件背后有多少逻辑。
+
+```python
+hooks.trigger("UserPromptSubmit", prompt=prompt)
+denial = hooks.trigger("PreToolUse", tool_name=name, tool_input=input)
+result = registry.dispatch(name, input)
+hooks.trigger("PostToolUse", tool_name=name, result=result)
+hooks.trigger("Stop", messages=messages, response=final_text)
+```
+
+这带来一个重要收益：新增机制时优先问“它应该挂在哪个生命周期点”，而不是“我要往 agent.py 哪一段插代码”。
+
 ## 为什么需要 Hook
 
 Agent loop 应该保持稳定：接收消息、调用模型、解析 tool_use、执行工具、回填结果。可真实产品里总会有额外需求，例如执行前审计、执行后记录、命令完成提醒、失败时收集诊断。如果每增加一个需求就改主循环，循环会很快变成难以推理的巨型函数。
@@ -44,6 +80,35 @@ hooks.register("PreToolUse", permissions.as_hook, priority=100)
 hooks.register("PostToolUse", tool_log.post_tool_use)
 hooks.register("Stop", stop_log.stop)
 ```
+
+## 工作原理
+
+HookSystem 的核心是一个按事件分组的 callback 列表。注册时保存优先级，触发时排序执行：
+
+```python
+class HookSystem:
+    def register(self, event, callback, priority=0):
+        self._hooks[event].append((priority, callback))
+
+    def trigger(self, event, **payload):
+        callbacks = sorted(self._hooks[event], reverse=True)
+        for _, callback in callbacks:
+            result = callback(**payload)
+            if result is not None:
+                return result
+        return None
+```
+
+`PreToolUse` 的短路语义让权限检查可以阻止工具执行；`PostToolUse` 和 `Stop` 通常只做观察和记录，所以返回 `None`。同一个机制在不同事件上的语义不同，这是 Hook 设计里最容易忽略的点。
+
+## 相对 ch05 的变化
+
+| 组件 | ch05 | ch06 |
+| --- | --- | --- |
+| 权限接入 | agent loop 直接调用权限逻辑 | 权限注册成 `PreToolUse` hook |
+| 扩展方式 | 修改主循环 | 注册事件 callback |
+| 执行顺序 | 固定代码顺序 | priority 控制顺序 |
+| 短路能力 | 权限专用 | 任意 hook 可按事件语义短路 |
 
 ## Agent Loop 如何使用
 
