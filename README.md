@@ -4,7 +4,7 @@ Build your own coding agent, step by step.
 
 `tiny-claude-code` is a hands-on tutorial project for learning how a coding agent works from the inside: an LLM, a loop, tools, file access, safety, context, memory, tasks, and collaboration.
 
-Current release: Part 3. The repository implements ch01-ch10 plus the first bug-fix exercise, with the rest of the curriculum laid out in [docs/ROADMAP.md](./docs/ROADMAP.md).
+Current release: Part 4. The repository implements ch01-ch13 plus the first bug-fix exercise, with the rest of the curriculum laid out in [docs/ROADMAP.md](./docs/ROADMAP.md).
 
 ## What You Get
 
@@ -15,6 +15,7 @@ Current release: Part 3. The repository implements ch01-ch10 plus the first bug-
 - A checkpoint project that lets the agent fix a real bug
 - Permission hooks and basic LLM error recovery
 - Context compaction, session resume, and project memory
+- Todo tracking, subagents, background tasks, and cron scheduling
 - Chapter-by-chapter教材 under [chapters/src/](./chapters/src)
 
 ## Current Release
@@ -32,10 +33,13 @@ What is implemented now:
 - ch08: Context budget
 - ch09: `/compact`
 - ch10: Session and memory
+- ch11: Todo and task system
+- ch12: Subagent delegation
+- ch13: Background tasks and cron
 
 What is planned next:
 
-- ch11-ch15, as described in [docs/ROADMAP.md](./docs/ROADMAP.md)
+- ch14-ch15, as described in [docs/ROADMAP.md](./docs/ROADMAP.md)
 
 ## Quick Start
 
@@ -63,6 +67,9 @@ python scripts/dev.py test --ch 07
 python scripts/dev.py test --ch 08
 python scripts/dev.py test --ch 09
 python scripts/dev.py test --ch 10
+python scripts/dev.py test --ch 11
+python scripts/dev.py test --ch 12
+python scripts/dev.py test --ch 13
 python scripts/dev.py test --all
 ```
 
