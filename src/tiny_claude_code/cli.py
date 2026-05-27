@@ -12,8 +12,10 @@ import shlex
 from pathlib import Path
 
 from tiny_claude_code.agent import agent_loop
+from tiny_claude_code.background import BackgroundManager
 from tiny_claude_code.compact import CompactManager
 from tiny_claude_code.context import ContextManager
+from tiny_claude_code.cron import CronScheduler
 from tiny_claude_code.error_recovery import ErrorHandler
 from tiny_claude_code.hooks import HookSystem, StopLogHook, ToolLogHook
 from tiny_claude_code.llm import LLMClient
@@ -67,6 +69,8 @@ def main(argv: list[str] | None = None) -> None:
     client = LLMClient()
     sessions = SessionManager(workspace)
     memory = MemoryManager(workspace)
+    background_manager = BackgroundManager(workspace)
+    cron_scheduler = CronScheduler(workspace)
     if args.resume:
         session_id = (
             sessions.latest_session_id() if args.resume == "latest" else args.resume
@@ -77,7 +81,12 @@ def main(argv: list[str] | None = None) -> None:
         session_id = sessions.new_session_id()
         messages: list[dict] = []
 
-    tools = create_default_registry(workspace)
+    tools = create_default_registry(
+        workspace,
+        client=client,
+        background_manager=background_manager,
+        cron_scheduler=cron_scheduler,
+    )
     system = build_system_prompt(workspace, memory.build_system_context())
     hooks = HookSystem()
     permissions = PermissionManager(workspace=workspace)
@@ -119,6 +128,10 @@ def main(argv: list[str] | None = None) -> None:
         )
         if prompt_override is not None:
             user_input = str(prompt_override)
+
+        notifications = background_manager.completed_notifications()
+        if notifications:
+            messages.append({"role": "user", "content": "\n\n".join(notifications)})
 
         messages.append({"role": "user", "content": user_input})
         response = agent_loop(
