@@ -1,136 +1,134 @@
 # ch12: Subagent
 
-> 子 agent 的价值不是更聪明，而是隔离上下文。
+> 有些探索会产生大量中间信息，主 agent 只需要结论。
 
 ## 本章目标
 
-当任务很大时，主 agent 不应该把所有细节都塞进自己的上下文。本章实现 `SubAgent` 和 `SubAgent` 工具，让主 agent 可以委派一个聚焦子任务，子 agent 使用独立消息历史完成工作，只把摘要返回给主 agent。
+复杂任务中经常有旁路探索：搜索所有 TODO、调查一个失败测试、阅读一组可能相关的文件。这些动作会产生很多中间输出。如果全部塞进主 `messages`，上下文会膨胀，主线也会变乱。
 
-## 问题：不是所有探索都应该进入主上下文
-
-复杂任务里经常会有旁路探索：搜索所有 TODO、调查某个失败测试、阅读一组不确定相关的文件。这些探索可能产生大量中间输出，但主 agent 最终只需要结论。
-
-如果把所有探索都放进主上下文，会出现两个问题：
-
-- 主线被中间细节淹没，后续决策成本变高。
-- compact 时更难判断哪些信息属于当前主任务。
-
-Subagent 的核心价值就是把这类探索隔离出去。
-
-## 解决方案：子任务独立运行，父任务只收摘要
+本章实现 `SubAgent` 和 `SubAgentTool`：
 
 ```text
-Parent agent
-   |
-   | calls SubAgentTool(task)
-   v
-Child agent loop with fresh messages
-   |
-   | uses selected tools
-   v
-summary result
-   |
-   v
-Parent receives one tool_result
+Main Agent
+  |
+  +-- SubAgent(task)
+          |
+          +-- 独立 messages
+          +-- 独立工具调用
+          +-- 返回摘要给 Main Agent
 ```
 
-父 agent 不需要读取子 agent 的完整 transcript。它只需要子任务结论、关键证据和建议下一步。
+子 agent 做探索，主 agent 只接收总结。
 
-## 为什么需要 Subagent
+## 先建立心智模型
 
-Subagent 不是“再开一个更聪明的模型”，而是给某个子任务创建独立上下文。父 agent 可以把一个边界清楚的问题交给子 agent，子 agent 在自己的消息历史里探索，最后只把总结结果返回给父 agent。
+### 子 agent 是隔离上下文，不是更聪明的模型
 
-这种设计解决的是上下文污染问题。比如父 agent 正在实现功能，同时需要调查一段测试失败原因；如果把所有探索输出都塞回父上下文，主线会被大量细节淹没。Subagent 让探索发生在旁路，父 agent 只接收结论、证据和建议动作。
-
-边界也很重要：子 agent 不应该无限递归创建更多 agent，也不应该把完整子 transcript 原样灌回父上下文。本章的深度限制和摘要返回，就是为了保留隔离带来的收益。
-
-## 工作原理
-
-SubAgentTool 可以复用现有 `agent_loop`，但传入新的 messages 和受控工具集合：
-
-```python
-def execute(task):
-    child_messages = [{"role": "user", "content": task}]
-    result = agent_loop(
-        messages=child_messages,
-        tools=child_tools,
-        max_turns=child_max_turns,
-        depth=parent_depth + 1,
-    )
-    return summarize_child_result(result)
-```
-
-这里的关键不是代码多复杂，而是边界要明确：限制轮次、限制递归深度、控制可用工具、只返回摘要。
-
-## 相对 ch11 的变化
-
-| 组件 | ch11 | ch12 |
-| --- | --- | --- |
-| 任务拆分 | Todo 状态拆分 | 可委派子 agent 执行 |
-| 上下文 | 单一消息历史 | 父子上下文隔离 |
-| 返回结果 | 工具直接返回执行结果 | 子 agent 返回摘要 |
-| 风险控制 | todo 校验 | max turns + recursion guard |
-
-## 核心概念
-
-`SubAgent` 做四件事：
-
-1. 创建独立 `messages`。
-2. 使用同一个 LLM client 和工具集合执行 `agent_loop`。
-3. 限制最大轮数，避免子任务失控。
-4. 禁止递归子 agent。
-
-子 agent 会拿到一个专用 system prompt：
+SubAgent 仍然使用同一个 agent loop 思想，只是它有自己的 messages。
 
 ```text
-You are a focused subagent...
+主上下文:
+  用户目标
+  子任务请求
+  子任务摘要
+
+子上下文:
+  子任务说明
+  搜索输出
+  文件片段
+  中间推理
 ```
 
-它应该完成被委派的任务，然后返回简短结果。
+这样主上下文不会被大量搜索细节污染。
 
-## 递归保护
+### 子 agent 必须有限制
 
-默认工具注册表会给主 agent 注册 `SubAgent` 工具。但子 agent 自己执行时，会从工具集合里移除 `SubAgent`，避免出现无限递归委派。
+如果允许子 agent 再派生子 agent，很容易递归失控。本章限制：
+
+- 子 agent 最多运行 30 轮
+- 子 agent 不能再调用 SubAgentTool
+- 返回主 agent 的只有摘要文本
+
+```text
+Main -> SubAgent -> tools
+Main -> SubAgent -> SubAgent  不允许
+```
+
+## 工作流程
+
+模型在主循环里请求：
+
+```text
+SubAgentTool.execute(task="Search all TODO comments and summarize")
+```
+
+工具内部：
+
+```text
+创建子 messages
+  |
+  v
+移除 SubAgentTool 的工具注册表
+  |
+  v
+调用 agent_loop(max_turns=30)
+  |
+  v
+返回子 agent 最终摘要
+```
+
+主 agent 把摘要当成普通 tool_result，继续决策。
+
+## 本章要实现什么
+
+主要修改：
+
+- [subagent.py](../../src/tiny_claude_code/subagent.py)
+- [tools/__init__.py](../../src/tiny_claude_code/tools/__init__.py)
+
+需要实现：
+
+- `SubAgent.__init__`
+- `spawn`
+- `_without_subagent_tool`
+- `SubAgentTool.__init__`
+- `SubAgentTool.schema`
+- `SubAgentTool.execute`
+- 默认注册表在有 client 时包含 subagent 工具
 
 ## 实现路线
 
-### 第一步：先复用 agent_loop
+### 第一步：spawn 创建独立 messages
 
-Subagent 不需要另写一套推理循环。它的特殊之处在于新 messages、新边界和摘要返回。
+子 agent 的第一条消息可以是用户角色：
 
-### 第二步：限制工具和轮次
+```python
+{"role": "user", "content": task_description}
+```
 
-子 agent 应该只拿到完成子任务所需的工具。轮次限制可以防止旁路探索变成主任务的黑洞。
+不要直接复用主 agent 的 messages；否则隔离就失效了。
 
-### 第三步：实现递归保护
+### 第二步：移除递归工具
 
-如果子 agent 可以无限创建子 agent，任务会很快失控。先限制一层递归，足够展示机制。
+如果 registry 里有 `subagent`，子 agent 使用的工具集合要去掉它。
 
-### 第四步：只返回摘要
+```text
+child_registry = registry without "subagent"
+```
 
-父 agent 需要结论，不需要子 agent 的全部中间过程。摘要应该包含发现、证据和建议下一步。
+可以复制注册表中的工具，也可以创建一个不包含 subagent 的默认注册表。
+
+### 第三步：调用 agent_loop
+
+传入子 messages、子 registry、同一个 client，并设置较小的 `max_turns`。
+
+### 第四步：返回摘要
+
+子 agent 的最终文本就是返回给主 agent 的工具结果。不要把子 messages 全量合并回主 messages。
 
 ## 测试讲解
 
-Subagent 测试要验证隔离：子 agent 的消息历史不应该直接污染父 messages。父 agent 只应该收到一个工具结果。
-
-还要测递归保护和最大轮次。没有这些测试，subagent 很容易在复杂任务里无限展开。
-
-## 常见错误
-
-### 把完整子 transcript 塞回父上下文
-
-这样会抵消 subagent 的主要价值。父上下文会被大量中间探索污染。
-
-### 子 agent 拥有全部权限
-
-委派不代表放权。子 agent 可用工具应该按任务收窄，仍然经过权限系统。
-
-### 子任务描述太宽
-
-“帮我完成整个项目”不是好子任务。子任务应该具体、可验证、边界清楚。
-
-## 运行测试
+运行：
 
 ```bash
 python scripts/dev.py test --ch 12
@@ -138,29 +136,63 @@ python scripts/dev.py test --ch 12
 
 测试覆盖：
 
-- 子 agent 返回摘要
-- 子 agent 触发最大轮数保护
-- 递归子 agent 被拒绝
-- `SubAgentTool` 能执行任务
-- 子 agent 工具集合移除 `SubAgent`
-- 默认 registry 在有 client 时包含 `SubAgent`
+- spawn 会返回子 agent 摘要
+- 超过 30 轮会被截断
+- 递归 subagent 会被拒绝
+- SubAgentTool 能执行任务
+- 子 agent 工具集中不再包含 subagent
+- 有 client 时默认注册表包含 subagent
 
 ## 验收任务
 
-让 agent 搜索项目中某类信息，例如：
+运行 agent：
 
 ```text
-搜索项目中所有和 memory 相关的实现，并总结它们的职责。
+搜索项目中所有 TODO 注释并总结它们分布在哪里
 ```
 
-预期主 agent 可以把搜索或总结委派给子 agent，主上下文只保留结果摘要。
+理想行为：主 agent 派生子 agent 搜索，子 agent 返回汇总，主 agent 基于汇总回答。
+
+## 常见错误
+
+### 子 agent 复用主 messages
+
+这样不会减少上下文，反而会污染主线。必须创建独立消息列表。
+
+### 把子 agent 的完整历史合并回来
+
+主 agent 只需要摘要。完整历史会抵消 subagent 的价值。
+
+### 忘记禁用递归
+
+子 agent 可以再派子 agent 时，很容易失控或耗尽上下文。
+
+### 没有 max_turns
+
+子任务也可能无限工具调用。子 agent 更需要严格轮数上限。
 
 ## 思考题
 
-1. 子 agent 应该共享主 agent 的全部上下文吗？
-2. 子 agent 返回全文结果和返回摘要有什么取舍？
-3. 为什么必须限制递归和最大轮数？
+1. 什么任务适合派给子 agent？
+2. 子 agent 返回摘要会丢失什么信息？
+3. 子 agent 是否应该共享主 agent 的 memory？
+4. 多个子 agent 并行执行时，需要哪些额外机制？
+
+## Bonus Tasks
+
+- 给 SubAgentTool 增加 `allowed_tools` 参数。
+- 返回摘要时附带置信度。
+- 保存子 agent transcript 到调试目录。
+- 支持多个子 agent 并行搜索后合并摘要。
 
 ## 本章小结
 
-ch12 引入了上下文隔离。主 agent 负责规划和整合，子 agent 负责局部探索或执行。
+你让 agent 能把旁路探索隔离出去：
+
+```text
+主 agent 保持任务主线
+子 agent 承担局部调查
+摘要回传，细节隔离
+```
+
+下一章会处理另一种隔离：让耗时命令在后台运行，不阻塞主对话。

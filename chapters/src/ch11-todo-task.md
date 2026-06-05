@@ -1,145 +1,148 @@
 # ch11: Todo and Task System
 
-> 复杂任务不是靠记忆硬扛，而是靠显式状态推进。
+> 复杂任务不能只靠模型临场发挥；agent 需要显式记录计划和进度。
 
 ## 本章目标
 
-Part 3 让 agent 能保存和压缩上下文，但它还没有真正的任务状态。本章实现 `TaskManager` 和 `TodoWrite` 工具，让 agent 可以创建 todo、更新进度、处理依赖，并把任务状态持久化到项目目录。
+前面的 agent 已经能读写代码、跑测试、恢复会话。但面对多步骤任务时，它可能会忘记做过什么、跳过验证，或者在多个方向之间来回切换。
 
-## 问题：长任务需要可见进度
-
-没有 Todo 的 agent 也能完成简单任务，但一旦任务超过三五步，它就容易出现几类问题：重复做已完成的事，跳过验证步骤，在用户插话后忘记当前阶段，或者把“正在做什么”藏在自然语言回复里。
-
-任务状态如果只存在于模型上下文里，会受上下文压缩、摘要遗漏和注意力漂移影响。Todo 工具把状态移到 harness 里：
+本章实现 `TaskManager` 和 `TodoWrite` 工具，让模型能显式维护 todo 列表：
 
 ```text
-LLM proposes plan
-      |
-      v
-TodoWrite tool
-      |
-      v
-TaskManager persists state
-      |
-      v
-reminder/status re-enters future turns
+pending -> in_progress -> completed
+          |
+          v
+        blocked
 ```
 
-这让计划变成可检查数据，而不是聊天记录里的愿望。
+完成后，agent 可以把复杂任务拆成小步骤，并在执行过程中更新状态。
 
-## 解决方案：让计划成为一个工具
+## 先建立心智模型
 
-TodoWrite 和 ShellTool、ReadTool 一样是工具。区别在于它不改变项目代码，而是改变 agent 自己的执行状态。模型需要显式调用它来声明计划和进度。
+### Todo 是外化的工作记忆
 
-这有两个好处：
-
-- harness 可以校验状态，例如只允许一个 `in_progress`。
-- 用户和后续模型轮次可以看到同一份任务状态。
-
-真实 agent 的 Todo 不只是 UI 功能，它是运行时控制的一部分。
-
-## 为什么 Todo 要存在于模型之外
-
-长任务里，模型很容易在局部细节中丢失全局目标。Todo 系统的作用不是替模型思考，而是把计划状态外部化：哪些事待做，哪件事正在做，哪些事已经完成。它给 agent 一个可检查、可恢复、可向用户解释的任务骨架。
-
-“最多一个 `in_progress`”看起来像小规则，但它能显著降低混乱度。agent 每次只承诺一个当前动作，完成后再移动状态；这样失败、暂停、恢复和用户插话时，都能看清当前工作点。
-
-真实 Claude Code 这类工具还会用 reminder 或系统提示把 Todo 状态重新注入模型，形成轻量的自我约束。但关键仍然是：Todo 存在于模型外部，由 harness 持久化和校验，而不是只靠模型在自然语言里记住计划。
-
-## 核心概念
-
-`TaskManager` 管理一组 `TodoItem`：
-
-- `pending`：等待执行
-- `in_progress`：正在执行
-- `completed`：已完成
-- `blocked`：被依赖阻塞
-
-系统保证同一时间最多只有一个 `in_progress`。如果一个 todo 设置了 `blocked_by`，依赖未完成时会自动变成 `blocked`；依赖完成后会回到 `pending`。
-
-## 工作原理
-
-TaskManager 的更新不是简单覆盖列表，而是先规范化、再校验、再持久化：
-
-```python
-def update(items):
-    normalized = normalize_items(items)
-    ensure_only_one_in_progress(normalized)
-    resolve_blocked_items(normalized)
-    save_each_item(normalized)
-    return render_status(normalized)
-```
-
-reminder 机制则在模型长时间不更新 todo 时介入。它不是强迫模型照做，而是把“你已经很久没更新计划了”变成下一轮上下文中的观察，帮助模型回到任务轨道。
-
-## 相对 ch10 的变化
-
-| 组件 | ch10 | ch11 |
-| --- | --- | --- |
-| 持久化内容 | 对话和长期记忆 | 显式任务状态 |
-| 模型行为 | 自然语言描述计划 | 通过 TodoWrite 更新计划 |
-| 状态校验 | 基本文件读写 | 单一 in_progress、依赖检查 |
-| 恢复价值 | 恢复对话 | 恢复任务进度 |
-
-## 持久化
-
-任务文件写入：
+模型可以在文本里说“我将先做 A 再做 B”，但这不稳定。Todo 工具把计划写进本地状态：
 
 ```text
-.tiny-claude-code/tasks/{id}.json
+1. pending     阅读失败测试
+2. in_progress 定位实现文件
+3. pending     修改代码
+4. pending     重新运行测试
 ```
 
-这个目录已经在 `.gitignore` 中，属于本地运行状态，不进入仓库。
+状态变成结构化数据后，harness 可以检查规则，例如同一时间只能有一个 `in_progress`。
 
-## 工具接入
+### TodoWrite 是给模型用的工具
 
-`TodoWriteTool` 暴露为工具名：
+用户不需要手动维护 todo。模型在任务开始时可以调用：
 
 ```text
-TodoWrite
+TodoWrite([
+  {"id": "1", "content": "Run tests", "status": "pending"},
+  {"id": "2", "content": "Fix failure", "status": "pending"}
+])
 ```
 
-它接收 todo 列表，创建或更新任务。默认工具注册表会自动包含它。
+agent loop 把它当作普通工具调用，TaskManager 负责保存和规范化。
+
+## 状态规则
+
+### 只能有一个 in_progress
+
+如果模型一次把多个任务标为 `in_progress`，TaskManager 应该规范化，只保留一个，其余改回 `pending`。
+
+```text
+bad:
+  A in_progress
+  B in_progress
+
+normalized:
+  A in_progress
+  B pending
+```
+
+### blockedBy 表示依赖
+
+任务可以声明依赖：
+
+```text
+B blockedBy A
+```
+
+如果 A 没完成，B 不能开始。A 完成后，B 可以从 blocked 回到 pending。
+
+### 长时间不更新要提醒
+
+如果 agent 连续几轮没有更新 todo，可以向模型注入提醒：
+
+```text
+Remember to update the todo list as you make progress.
+```
+
+这不是强制，但能让模型更稳定地跟踪任务。
+
+## 本章要实现什么
+
+主要修改：
+
+- [tasks.py](../../src/tiny_claude_code/tasks.py)
+- [tools/__init__.py](../../src/tiny_claude_code/tools/__init__.py)
+- [agent.py](../../src/tiny_claude_code/agent.py)
+
+需要实现：
+
+- `TaskManager.__init__`
+- `create`
+- `update`
+- `write`
+- `list`
+- `tick_without_update`
+- `load`
+- `_normalize`
+- `_persist`
+- `TodoWriteTool`
+- 默认注册表包含 todo 工具
 
 ## 实现路线
 
-### 第一步：定义 TodoItem
+### 第一步：定义 todo 数据形状
 
-先把 `id`、`content`、`status`、`blocked_by` 这些字段固定下来。任务系统最怕字段随意漂移，后续恢复和渲染都会出问题。
+每个 todo 至少包含：
 
-### 第二步：实现状态校验
+```python
+{
+    "id": "1",
+    "content": "Run tests",
+    "status": "pending",
+}
+```
 
-状态机规则应该由 TaskManager 强制执行，而不是让模型自觉遵守。尤其是“同一时间只有一个 in_progress”。
+可选字段：
 
-### 第三步：实现 TodoWriteTool
+```python
+{"blockedBy": ["1"]}
+```
 
-TodoWriteTool 只是工具入口，真正状态更新交给 TaskManager。这样 CLI、测试和未来 UI 都能复用同一套任务逻辑。
+### 第二步：实现状态规范化
 
-### 第四步：加入 reminder
+`write` 接收一组 todo 后，先规范化再保存：
 
-reminder 是轻量反馈机制：当模型长时间不更新 todo，就把状态提醒重新放回上下文，帮助它回到主线。
+- 缺失 status 时默认 `pending`
+- 多个 `in_progress` 只保留一个
+- 依赖未完成时标为 `blocked`
+- 依赖完成后解除 blocked
+
+### 第三步：持久化
+
+todo 状态保存到 `.tiny-claude-code/tasks/`。这样 session 恢复后，任务状态也能加载。
+
+### 第四步：实现工具
+
+`TodoWriteTool.schema` 告诉模型参数是 todo 列表。`execute` 调用 TaskManager，并返回当前列表摘要。
 
 ## 测试讲解
 
-本章测试要证明任务系统会纠正或拒绝非法状态，而不是只保存模型传来的列表。依赖关系、blocked 状态和单一 in_progress 都应该被 TaskManager 统一处理。
-
-reminder 测试要控制轮次计数。它不是每轮都出现，而是在模型连续忽略任务状态后出现。
-
-## 常见错误
-
-### Todo 只做展示
-
-如果 Todo 只是打印给用户看，不参与模型后续上下文，它对 agent 行为帮助有限。Todo 状态必须能回到后续轮次。
-
-### 允许多个 in_progress
-
-多个当前任务会让恢复和用户插话变得混乱。除非做真正并行调度，否则保持单一焦点更稳。
-
-### 依赖关系只靠自然语言描述
-
-`blocked_by` 应该是结构化字段。自然语言里的“先做 A 再做 B”很容易在长上下文里丢失。
-
-## 运行测试
+运行：
 
 ```bash
 python scripts/dev.py test --ch 11
@@ -147,29 +150,70 @@ python scripts/dev.py test --ch 11
 
 测试覆盖：
 
-- 新 todo 默认是 `pending`
-- 同一时间只有一个 `in_progress`
-- 依赖未完成时自动 `blocked`
-- 依赖完成后自动解除阻塞
-- 连续多轮未更新时产生提醒
-- `TodoWrite` 工具写入 manager
+- 新 todo 默认 pending
+- 同一时间只能一个 in_progress
+- blocked 依赖完成后恢复 pending
+- 连续三轮无更新会产生提醒
+- TodoWriteTool 能更新 manager
+- 默认注册表包含 todo 工具
 
 ## 验收任务
 
-让 agent 完成一个多步小任务，例如：
+运行 agent：
 
-```text
-给这个项目新增一个说明文件，并运行测试确认没有破坏现有功能。
+```bash
+python scripts/dev.py run
 ```
 
-预期 agent 会先写 todo，再逐步更新状态。
+输入：
+
+```text
+给这个项目添加一个合理的 .gitignore，并验证不会误删已有内容
+```
+
+期望行为：模型先创建 todo，再按步骤读取现状、写入文件、检查结果。
+
+## 常见错误
+
+### 允许多个 in_progress
+
+这会让 todo 失去“当前正在做什么”的意义。规范化时必须处理。
+
+### blocked 状态不会解除
+
+依赖完成后，要重新计算被阻塞任务的状态。
+
+### reminder 每轮都出现
+
+只有连续多轮没有更新时才提醒。更新 todo 后计数要清零。
+
+### TodoWrite 不持久化
+
+任务系统如果只在内存里，resume 后就丢失进度。
 
 ## 思考题
 
-1. 为什么 todo 状态应该持久化，而不只放在 prompt 里？
-2. “同一时间只有一个 in_progress” 会限制哪些场景？
-3. 依赖关系应该由 agent 自己维护，还是由任务系统强制维护？
+1. Todo 是给用户看的，还是给模型看的？
+2. 任务状态应该由模型决定，还是由 TaskManager 强制规范？
+3. blockedBy 能表达哪些常见开发依赖？
+4. 什么时候 todo 反而会增加负担？
+
+## Bonus Tasks
+
+- 增加优先级字段。
+- 增加 `/todo list` CLI 命令。
+- 在最终回答里自动总结完成的 todo。
+- 支持任务分组。
 
 ## 本章小结
 
-ch11 给 agent 增加了任务骨架。它不再只是连续聊天，而是能把复杂工作拆成显式、可恢复的步骤。
+你让 agent 拥有了显式任务状态：
+
+```text
+计划可见
+进度可追踪
+依赖可表达
+长任务不容易散掉
+```
+
+下一章会进一步处理复杂任务：把旁路探索交给子 agent，让主上下文保持干净。

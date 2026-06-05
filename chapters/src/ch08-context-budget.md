@@ -1,155 +1,157 @@
 # ch08: Context Budget
 
-> 上下文窗口不是无限仓库，而是 agent 每一轮都要精打细算的工作台。
+> 上下文窗口是有限资源，agent 必须学会在耗尽前回收。
 
 ## 本章目标
 
-前面的 agent 已经能执行工具、读写文件，也能在错误时重试。但只要对话足够长，工具输出足够大，最终都会撞上模型的上下文上限。本章实现 `ContextManager`，在每次调用 LLM 前主动估算、裁剪和压缩消息历史。
+到目前为止，`messages` 会不断增长。每次工具调用都会追加 assistant 的 `tool_use` 和 user 的 `tool_result`。长任务跑久以后，上下文会变得很大。
 
-## 问题：工具越有用，上下文越容易爆
+本章实现 `ContextManager`，在每次 LLM 调用前估算 token，并在超出预算时压缩消息：
 
-coding agent 最占上下文的通常不是用户问题，而是工具结果。读一个 1000 行文件、跑一次失败测试、打印一个长日志，都可能把几千到几万字符塞进消息历史。工具越会工作，越容易把后续请求挤满。
+- 截断过长工具输出
+- 裁掉中间旧消息
+- 保留开头的任务背景和结尾的最新上下文
 
 ```text
 messages
-  user goal
-  assistant tool_use(read large file)
-  user tool_result(large file content)
-  assistant tool_use(run tests)
-  user tool_result(long failure output)
-  ...
+  |
+  v
+estimate_tokens
+  |
+  +-- within budget -> 直接传给 LLM
+  |
+  +-- too large -> trim tool output -> snip old messages -> retry
 ```
 
-如果不管理上下文，agent 会在任务中途突然因为 token 超限停下。更糟的是，模型每轮都要重新读取这些历史，成本和延迟都会增加。
+ch09 会加入 LLM 总结式 compact。本章先做不依赖模型的机械压缩。
 
-## 解决方案：在每次模型调用前做体检
+## 先建立心智模型
 
-ContextManager 不是等 API 报错后再补救，而是在 `_chat(...)` 前检查消息历史：
+### messages 是短期记忆，也是成本
+
+ch01 说过，LLM API 是无状态的，harness 必须每次传入完整 `messages`。这让模型能记住历史，但也带来成本：
 
 ```text
-before LLM call
-   |
-   v
-estimate_tokens
-   |
-   v
-trim oversized tool_result
-   |
-   v
-snip old middle messages
-   |
-   v
-if still too large -> compact
+更多历史 -> 更多上下文 -> 更高成本 -> 更接近窗口上限
 ```
 
-这是一条从便宜到昂贵的策略链。裁剪字符串最便宜，裁掉旧消息次之，调用 LLM 生成摘要最贵，所以 compact 应该放在最后。
+工具输出尤其危险。一次测试失败、一次目录递归、一次大文件读取，都可能产生几千到几万字符。
 
-## 为什么要先算上下文预算
+### 压缩不是随便删除
 
-上下文窗口经常被误解成“模型的记忆”。更准确地说，它是这一次请求能带给模型的工作区。工作区有限、昂贵，并且每轮都要重新发送。agent 真正的长期状态应该保存在本地 transcript、session、memory 或项目文件里，进入上下文的只是当前最值得模型看的那部分。
+删除消息会丢信息。压缩策略要尽量保留对当前任务最有用的部分：
 
-因此上下文管理的目标不是简单删旧消息，而是在预算内保留决策所需信息。最近的观察通常更重要，因为它们描述当前环境；早期的探索可以被摘要替代；巨大工具输出可以被裁剪或用文件引用替代。
-
-本章先做 token 估算和预算检查，是后续 compact 的地基。没有预算层，压缩就只能在“已经爆了”之后补救；有了预算层，agent 才能在接近限制时主动选择 trim、snip 或 compact。
-
-## 核心概念
-
-上下文预算不是等报错以后再补救，而是在每轮请求前做体检：
-
-1. `estimate_tokens(messages)`：用字符数除以 4 做粗略 token 估算。
-2. `trim_tool_output(messages)`：优先截断过长的 `tool_result`，因为工具输出常常最占空间。
-3. `snip_old_messages(messages)`：保留开头和结尾，把中间旧消息替换成占位说明。
-4. `compact(messages)`：按顺序执行这些策略，并原地更新消息列表。
-
-这个策略的重点是先保留对任务最有用的信息：开头通常有用户目标，结尾通常有当前状态，中间冗长输出可以先牺牲。
-
-## 工作原理
-
-一个最小上下文管理器可以这样组织：
-
-```python
-class ContextManager:
-    def compact(self, messages, client=None, compact_manager=None):
-        if self.estimate_tokens(messages) <= self.max_tokens:
-            return messages
-
-        self.trim_tool_output(messages)
-        if self.estimate_tokens(messages) <= self.max_tokens:
-            return messages
-
-        self.snip_old_messages(messages)
-        if self.estimate_tokens(messages) <= self.max_tokens:
-            return messages
-
-        if compact_manager is not None:
-            return compact_manager.summarize_and_replace(messages, client)
-
-        return messages
+```text
+开头：用户最初目标、system 背景
+中间：较旧的工具细节，可裁剪
+结尾：最近几轮对话和工具结果
 ```
 
-这里的 `estimate_tokens` 可以先用字符数近似，不需要一开始就接入精确 tokenizer。教材选择近似算法，是为了让重点落在策略顺序和状态变化上，而不是依赖某个模型供应商的 tokenizer。
-
-## 相对 ch07 的变化
-
-| 组件 | ch07 | ch08 |
-| --- | --- | --- |
-| 失败恢复 | token limit 只是错误类型 | token limit 有主动预算管理 |
-| 工具输出 | 原样进入历史 | 过长输出可被裁剪 |
-| 历史消息 | 持续增长 | 可保留 head/tail 并 snip 中间 |
-| 调用前准备 | 直接请求模型 | 请求前先检查上下文预算 |
-
-## 修改文件
-
-- `src/tiny_claude_code/context.py`
-- `src/tiny_claude_code/agent.py`
-
-`agent_loop` 在每次 `_chat(...)` 前调用：
-
-```python
-context_manager.compact(messages, client=client, compact_manager=compact_manager)
+```text
+[head][old details old details old details][tail]
+   |              remove/snip              |
+   v
+[head][... earlier messages omitted ...][tail]
 ```
 
-这保证无论 agent 连续调用多少次工具，进入模型之前都会先检查上下文预算。
+## 三个核心能力
+
+### estimate_tokens
+
+教学项目使用粗略估算即可：
+
+```text
+tokens ~= characters / 4
+```
+
+它不精确，但足够判断“是否明显太长”。真实系统可以接入 tokenizer。
+
+### trim_tool_output
+
+工具输出可以局部截断，而不用删除整条消息。
+
+```text
+tool_result content 太长
+  |
+  v
+保留前 max_chars 字符 + "[truncated]"
+```
+
+这样模型至少知道工具执行过，并且结果被截断了。
+
+### snip_old_messages
+
+当单条输出截断还不够，就裁掉中间旧消息：
+
+```text
+保留 keep_head 条
+保留 keep_tail 条
+中间替换成一条说明消息
+```
+
+保留 head 是为了不丢初始目标；保留 tail 是为了保留最近状态。
+
+## 本章要实现什么
+
+主要修改：
+
+- [context.py](../../src/tiny_claude_code/context.py)
+- [agent.py](../../src/tiny_claude_code/agent.py)
+
+需要实现：
+
+- `ContextManager.__init__`
+- `estimate_tokens`
+- `trim_tool_output`
+- `snip_old_messages`
+- `compact`
+- `_content_to_text`
+- agent loop 在调用 LLM 前触发 context compact
 
 ## 实现路线
 
-### 第一步：写 token 估算
+### 第一步：把 content 转成文本
 
-先用字符数近似即可。这个估算不追求精确，而是给上下文管理一个稳定触发信号。
+message 的 content 可能是字符串，也可能是 block 列表。估算 token 前要能统一取文本。
 
-### 第二步：裁剪工具输出
+```text
+str content -> 直接使用
+list content -> 拼接其中 text/content 字段
+unknown -> str(...)
+```
 
-优先处理 `tool_result`，因为它通常最大，而且很多输出可以通过重新运行命令或重新读取文件恢复。
+### 第二步：估算总 token
 
-### 第三步：保留 head 和 tail
+遍历 messages，把 role 和 content 都算进去即可。粗略估算比完全不估算好。
 
-head 通常保存用户目标，tail 保存当前状态。中间消息可以先被占位符替代。
+### 第三步：截断工具输出
 
-### 第四步：接入 agent loop
+只处理 `type == "tool_result"` 的 block。不要截断普通用户请求或模型最终回答。
 
-上下文管理必须在每次 LLM 调用前发生，而不是只在 CLI 命令里手动触发。
+### 第四步：裁剪旧消息
+
+如果截断后仍超预算，保留头尾，中间插入一条说明：
+
+```text
+[Earlier conversation omitted to fit context budget.]
+```
+
+这条说明让模型知道历史被裁掉了。
+
+### 第五步：接入 agent loop
+
+每次 LLM 调用前：
+
+```python
+if context_manager:
+    messages[:] = context_manager.compact(messages)
+```
+
+如果修改的是同一个 list，注意保持调用方看到更新后的 messages。
 
 ## 测试讲解
 
-本章测试不需要真实 tokenizer。测试重点是消息规模是否下降、重要位置是否保留、过长工具输出是否带有截断标记。
-
-还要测原地修改和返回值的关系。如果 `compact(messages)` 修改的是副本，agent loop 里的原始 messages 可能完全没变。
-
-## 常见错误
-
-### 只按消息数量裁剪
-
-一条工具输出可能比几十条短消息还大。上下文管理应该看内容规模，而不是只看列表长度。
-
-### 裁掉最近观察
-
-最近的工具结果经常决定下一步动作。优先保留 tail，能避免 agent 刚看到错误就忘掉错误。
-
-### 把压缩当成删除历史
-
-active context 可以变短，但完整 transcript 最好保留在 session 或日志里。
-
-## 运行测试
+运行：
 
 ```bash
 python scripts/dev.py test --ch 08
@@ -157,29 +159,64 @@ python scripts/dev.py test --ch 08
 
 测试覆盖：
 
-- token 估算与字符数成比例
-- 长工具输出被截断并带有 `[truncated]` 标记
-- 旧消息被裁剪，首尾保留
-- compact 后上下文规模下降
-- 空消息不崩溃
-- agent loop 调用 LLM 前会触发上下文管理
+- token 估算随字符数增加
+- 工具输出截断会加 `[truncated]`
+- 裁剪旧消息会保留头尾
+- compact 后 token 数下降
+- 空消息不会崩溃
+- agent loop 会在 LLM 调用前压缩
 
 ## 验收任务
 
-运行：
+让 agent 做一个会产生多次工具调用的任务：
 
-```bash
-python scripts/dev.py run
+```text
+搜索项目中所有 Python 文件，并总结每个文件大概负责什么
 ```
 
-让 agent 连续读取多个文件并总结。预期行为是对话能持续推进，不会因为工具输出太长直接污染后续所有请求。
+观察 agent 是否能持续工作，而不是因为上下文过长失败。
+
+## 常见错误
+
+### 直接删除最早消息
+
+最早消息通常包含用户目标。全部删掉会让模型忘记任务。
+
+### 截断所有 content
+
+普通用户请求和模型推理文本不应该被无差别截断。优先处理工具输出。
+
+### compact 返回新 list 但调用方没接住
+
+agent loop 中如果需要原地更新，使用 `messages[:] = ...`。
+
+### token 估算追求过度精确
+
+本章目标是预算意识，不是实现 tokenizer。粗略估算足够通过教学测试。
 
 ## 思考题
 
-1. 为什么工具输出通常比用户消息更适合先截断？
-2. 保留 head/tail 的策略有什么缺点？
-3. 粗略 token 估算在什么时候会误判？
+1. 为什么工具输出是上下文膨胀的主要来源？
+2. 保留 head 和 tail 分别保护了什么信息？
+3. 机械裁剪和 LLM 总结各有什么优缺点？
+4. 如果裁掉的历史里有关键事实，agent 应该如何恢复？
+
+## Bonus Tasks
+
+- 给不同工具设置不同输出预算。
+- 在截断文本里保留开头和结尾。
+- 统计每轮压缩前后的 token 数。
+- 支持按消息重要性裁剪。
 
 ## 本章小结
 
-ch08 给 agent 加上了上下文预算意识。它还不理解历史内容的重要性，但已经会在窗口耗尽前主动回收空间。
+你让 agent 开始主动管理上下文：
+
+```text
+估算预算
+截断长工具输出
+裁掉旧消息
+保留任务头部和最近状态
+```
+
+下一章会在机械压缩不够时，引入 `/compact`：让模型把长历史总结成更短的记忆。

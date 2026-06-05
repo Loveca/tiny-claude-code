@@ -4,161 +4,148 @@
 
 ## 本章目标
 
-前四章已经让 agent 能运行命令、读文件、写文件、搜索代码。能力足够以后，新的问题立刻出现：模型可能请求危险操作。本章实现三层权限检查，让工具执行前先经过明确边界。
+前四章让 agent 能运行命令、读文件、写文件、搜索代码。能力扩大以后，风险也立刻扩大：模型可能请求删除文件、越界读取、运行破坏性命令。
 
-当前实现的 `PermissionManager` 会作为 `PreToolUse` hook 注册到 agent loop 中。这样权限逻辑可以拦截工具调用，但不用散落到每个工具内部。
-
-## 问题：能力扩大以后，风险也扩大
-
-Part 1 的目标是让 agent 能动手。它现在可以跑命令、读文件、写文件、搜索代码，这些都是 coding agent 必须具备的能力。但能力一旦接入真实文件系统，就不再只是“生成文本是否正确”的问题，而是“错误动作会不会造成真实损失”的问题。
-
-一个典型失败路径是这样的：
-
-```text
-+--------+       +-----------+       +----------------+
-|  LLM   | ----> | tool_use  | ----> | Shell / Write  |
-+--------+       +-----------+       +----------------+
-     模型认为这是合理动作          本地环境真实执行副作用
-```
-
-如果中间没有权限层，模型的一次误判就会直接变成文件删除、越界写入或危险命令。提示词可以降低概率，但不能成为安全边界；安全边界必须由执行工具的 harness 控制。
-
-## 解决方案：把工具执行变成可裁决动作
-
-本章在工具执行前插入一个裁决点。agent loop 仍然负责解析 `tool_use`，但在调用 `registry.dispatch(...)` 之前，先把工具名和参数交给 `PermissionManager`。
+本章实现 `PermissionManager`，在工具真正执行前插入权限裁决。
 
 ```text
 tool_use
-   |
-   v
-[PermissionManager]
-   | allow -> registry.dispatch(...)
-   | ask   -> user confirms, then dispatch or deny
-   | deny  -> return tool_result with denial reason
+  |
+  v
+PermissionManager
+  |
+  +-- allow -> 执行工具
+  +-- ask   -> 用户确认后再决定
+  +-- deny  -> 不执行，把拒绝原因回传模型
 ```
 
-这样模型不会失去行动能力，但每次行动都会先经过本地策略检查。权限系统返回的拒绝原因仍然会作为 `tool_result` 写回模型，让模型可以换一种安全做法继续完成任务。
+权限不是提示词。提示词是给模型看的，权限是本地 harness 强制执行的边界。
 
-## 为什么权限必须在执行前判断
+## 先建立心智模型
 
-到 ch04 为止，模型已经可以调用工具。问题也随之出现：模型可能请求删除文件、写入敏感路径，或者运行带副作用的命令。真实 agent 不能只在 system prompt 里写“请谨慎操作”，因为 prompt 是给模型看的约束，真正的安全边界必须由本地 harness 在执行前强制检查。
+### 风险来自真实副作用
 
-权限系统的核心是把“模型想做什么”和“程序允许做什么”拆开。模型产出 tool_use，agent loop 准备执行，PermissionPolicy 在工具 handler 之前做裁决。这个位置很关键：太早时还不知道具体参数，太晚时副作用已经发生。
+模型回复错一句话，通常只是答案不准。工具执行错一步，可能会改坏真实文件。
 
-本章实现的 `allow`、`ask`、`deny` 是最小但完整的三态模型：
+```text
+LLM 判断
+  |
+  v
+tool_use {"name": "bash", "input": {"command": "rm important.py"}}
+  |
+  v
+如果没有权限层，本地环境直接执行
+```
 
-- `allow` 表示这类动作可以直接执行，例如只读文件。
-- `ask` 表示动作不一定危险，但需要用户确认，例如写文件或运行命令。
-- `deny` 表示无论模型怎么解释都不执行，例如越过工作区写入系统路径。
+所以权限系统必须站在工具执行之前。太早时不知道具体参数；太晚时副作用已经发生。
 
-生产级系统会有更复杂的规则来源，例如项目配置、用户配置、企业策略、工具自身声明和一次性授权。但无论规则多复杂，原则都一样：权限结果必须在代码里落地，不能把“要不要执行”交给模型自判。
+### 权限结果应该回到模型
+
+拒绝工具不等于终止任务。比如模型想读取 `../secret.txt`，权限系统拒绝后，可以把原因作为 `tool_result` 写回：
+
+```text
+Denied: path escapes workspace
+```
+
+模型看到后可以换一种安全路径继续完成任务。
 
 ## 三道闸门
 
-权限检查分成三类：
+本章实现三层检查：
 
-1. 硬拒绝：永远不允许，例如 `rm -rf /`、fork bomb、磁盘破坏命令。
-2. 规则检查：根据上下文判断，例如路径越界、破坏性 shell 命令。
-3. 用户审批：对可能危险但不一定错误的操作询问用户。
-
-当前版本的语义：
-
-- 路径越界直接拒绝。
-- deny list 命中直接拒绝。
-- `rm temp.txt` 这类破坏性 shell 命令会询问用户。
-- 用户输入 `always` 后，同一工具和同一参数下次自动通过。
-
-## 工作原理
-
-权限检查是一个短路管线。越确定危险的规则越靠前，越需要人类判断的规则越靠后：
-
-```python
-def check(tool_name, tool_input):
-    denial = check_hard_deny(tool_name, tool_input)
-    if denial:
-        return PermissionDecision("deny", denial)
-
-    denial = check_workspace_boundary(tool_name, tool_input)
-    if denial:
-        return PermissionDecision("deny", denial)
-
-    if matches_remembered_allow(tool_name, tool_input):
-        return PermissionDecision("allow")
-
-    if needs_user_confirmation(tool_name, tool_input):
-        return ask_user(tool_name, tool_input)
-
-    return PermissionDecision("allow")
+```text
+          +-----------------+
+tool_use ->| 1. hard deny    | 命中直接拒绝
+          +-----------------+
+                    |
+                    v
+          +-----------------+
+          | 2. rules        | 路径、危险命令等规则
+          +-----------------+
+                    |
+                    v
+          +-----------------+
+          | 3. user prompt  | 需要人工确认
+          +-----------------+
 ```
 
-这里有两个设计点需要记住。第一，`deny` 必须短路，不能再进入用户确认，因为硬拒绝代表程序已经知道该动作越过边界。第二，`always` 不能只记工具名，否则一次授权 `write_file` 可能会意外覆盖所有写入操作；它至少要绑定工具名和参数摘要。
+### Gate 1: 硬拒绝
 
-## 相对 ch04 的变化
+硬拒绝用于永远不应该执行的动作，例如：
 
-| 组件 | ch04 | ch05 |
-| --- | --- | --- |
-| 工具执行 | registry 直接 dispatch | dispatch 前先经过权限检查 |
-| 安全边界 | 工具内部的基础校验 | 统一的 PermissionManager |
-| 用户参与 | 无 | 危险但可接受的动作会询问用户 |
-| 失败回填 | 未知工具或执行失败 | 权限拒绝也作为 tool_result 回填 |
+- `rm -rf /`
+- fork bomb
+- 明显破坏系统的命令
 
-## 接入方式
+这类操作不需要询问用户，直接拒绝。
 
-`PermissionManager` 暴露 `as_hook`：
+### Gate 2: 规则检查
 
-```python
-permissions = PermissionManager(workspace=workspace)
-hooks.register("PreToolUse", permissions.as_hook, priority=100)
-```
+规则检查根据工具参数判断。例如：
 
-hook 返回 `None` 表示允许执行；返回字符串表示拒绝原因。agent loop 会把拒绝原因作为 `tool_result` 写回模型。
+- 文件路径是否逃出 workspace
+- shell 命令是否像删除操作
+- 写入路径是否合理
+
+路径越界应该直接拒绝，因为 workspace 是项目边界。
+
+### Gate 3: 用户审批
+
+有些动作不是绝对危险，但需要确认。例如删除项目内的临时文件、运行某些带副作用的命令。
+
+用户可以回答：
+
+- `y`：本次允许
+- `n`：本次拒绝
+- `always`：同一工具和同一参数下次自动允许
+
+## 本章要实现什么
+
+主要修改 [permissions.py](../../src/tiny_claude_code/permissions.py)，并让 agent loop 在工具执行前调用它。
+
+需要实现：
+
+- `PermissionDecision`：表示 `allow`、`ask`、`deny`
+- `PermissionManager.check(...)`
+- `PermissionManager.as_hook(...)`
+- `_check_deny_list`
+- `_check_rules`
+- `_path_escapes_workspace`
+- `_prompt_user`
+- `_remember_key`
+
+当前仓库后续会用 hook 系统承载权限；本章可以先把它理解成“工具执行前的拦截器”。
 
 ## 实现路线
 
-### 第一步：先定义裁决结果
+### 第一步：定义返回值
 
-不要一开始就写 deny list。先把权限系统的输出定义清楚：`allow`、`ask`、`deny`。这样后续规则无论来自路径检查、命令检查还是用户输入，都会回到同一套结果模型。
+不要只返回 `True` / `False`。权限判断需要说明原因：
 
 ```text
-tool_use + workspace + rules
-        |
-        v
-PermissionDecision(action, reason?)
+allow: 可以执行
+deny + reason: 不执行，并把 reason 回给模型
 ```
 
-### 第二步：把硬边界放在最前面
+### 第二步：实现 hard deny
 
-路径越界、明显破坏性命令、空路径这类问题不需要进入用户确认。硬边界的意义是保护系统不被错误授权绕过。
+检查 shell command 中是否包含危险模式。这里不追求完美，只做教学级防线。重点是理解：某些模式应该无条件拒绝。
 
-### 第三步：再处理用户确认
+### 第三步：实现路径越界
 
-`ask` 只适合“可能危险但不一定错误”的动作。比如删除工作区内的临时文件可以问用户；写入工作区外路径就不应该问。
+对 `read`、`write`、`search` 这类工具，检查参数中的路径。目标路径 resolve 后必须仍在 workspace 内。
 
-### 第四步：通过 Hook 接入循环
+### 第四步：实现用户确认和 always
 
-权限系统不要改写每个工具，也不要让 agent loop 知道每条规则。把它注册成 `PreToolUse` hook，让主循环只关心“这个事件是否被短路”。
+`always` 需要记住“工具名 + 参数”的组合。可以把参数转成稳定 JSON 字符串作为 key。
+
+```text
+("bash", {"command": "rm temp.txt"}) -> remembered allow
+```
 
 ## 测试讲解
 
-本章测试的重点是顺序和短路，而不是只测某个字符串是否被拦住。硬拒绝命中后，用户确认不应该发生；`always` 授权命中后，也不应该重复询问用户。
-
-权限测试还要证明工具没有被执行。也就是说，拒绝结果不能只是返回了一个错误字符串，还必须确认底层 handler 没有产生副作用。
-
-## 常见错误
-
-### 把权限写进工具内部
-
-工具内部可以做参数校验，但统一权限不应该散落在每个工具里。否则新增工具时很容易忘记接入同一套策略。
-
-### 让模型自己判断是否危险
-
-模型可以解释风险，但不能拥有最终执行权。是否执行必须由本地代码裁决。
-
-### `always` 授权粒度太粗
-
-只记住工具名会导致一次授权扩大成所有同类操作。更安全的做法是绑定工具名、关键参数和 workspace。
-
-## 运行测试
+运行：
 
 ```bash
 python scripts/dev.py test --ch 05
@@ -166,35 +153,71 @@ python scripts/dev.py test --ch 05
 
 测试覆盖：
 
-- deny list 直接拒绝
-- 路径越界直接拒绝
-- 普通操作不询问
-- 规则命中后可以批准
-- 规则命中后可以拒绝
-- `always` 记忆同参数授权
+- deny list 会拦截危险 shell 命令
+- 路径越界会拒绝
+- 正常只读操作可以直接通过
+- 需要确认的动作可以被批准
+- 需要确认的动作可以被拒绝
+- `always` 会让同一参数下次自动通过
 
 ## 验收任务
 
-运行：
-
-```bash
-python scripts/dev.py run
-```
-
-输入：
+运行 agent 后输入：
 
 ```text
 读取 ../secret.txt
 ```
 
-期望：工具调用被拒绝，agent 收到权限拒绝结果并向用户说明。
+期望行为：工具不执行，模型收到权限拒绝原因并解释无法越界读取。
+
+再输入：
+
+```text
+删除 temp.txt
+```
+
+如果权限规则把它视为需要确认，CLI 应该询问用户，而不是直接执行。
+
+## 常见错误
+
+### 让模型自己判断权限
+
+模型可以建议，但不能裁决本地副作用。权限必须在 Python 代码中执行。
+
+### 拒绝后直接退出 agent loop
+
+拒绝原因应该作为 `tool_result` 回传，让模型有机会换方案。
+
+### always 记得太宽
+
+`always` 只能记住同一工具和同一参数。不能因为用户批准过一次 `bash`，就放行所有 bash 命令。
+
+### 路径越界只检查字符串
+
+仍然要用 `Path.resolve()`，否则 `../`、软链接、Windows 路径都容易绕过。
 
 ## 思考题
 
-1. 为什么路径越界应该直接拒绝，而不是询问用户？
-2. deny list 为什么不能作为完整安全机制？
-3. `always` 应该记住参数，还是只记住工具名？
+1. 权限系统为什么必须在工具执行前运行？
+2. `deny` 和 `ask` 的边界应该怎么划分？
+3. 如果模型被拒绝后反复请求同一危险操作，agent loop 应该如何处理？
+4. 项目级权限配置应该放在哪里？
+
+## Bonus Tasks
+
+- 支持 `.tiny-claude-code/permissions.yaml`。
+- 给不同工具设置默认策略。
+- 记录每次权限拒绝到日志。
+- 给用户确认提示显示更清晰的风险摘要。
 
 ## 本章小结
 
-Part 1 让 agent 能动手，ch05 开始给它边界。权限不是为了削弱 agent，而是让它能在真实项目里更可靠地行动。
+你给 agent 加上了第一层安全边界：
+
+```text
+模型可以请求动作
+Harness 决定是否执行
+拒绝原因回传模型
+```
+
+下一章会把权限检查接入更通用的 hook 系统，让“工具执行前后发生什么”不再硬编码在 agent loop 里。

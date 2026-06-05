@@ -1,183 +1,189 @@
 # ch15: Skills and Plugins
 
-> 当 agent 不够懂某类任务时，不要把所有知识写死到核心里。
+> Skill 给 agent 加知识，plugin 给 agent 加工具。
 
 ## 本章目标
 
-最后一章实现两个扩展点：
+ch14 的真实项目挑战会暴露一个问题：agent 的基础机制已经有了，但它不一定懂某个领域的最佳实践，也不一定拥有某个外部能力。
 
-- `SkillLoader`：从本地 `SKILL.md` 加载任务知识。
-- `PluginLoader`：从 Python 文件动态注册新工具。
+本章实现两种扩展：
 
-这让 agent 的核心保持小，但可以按项目需要扩展能力。
-
-## 问题：核心 agent 不可能内置所有知识和能力
-
-一个固定 agent 可以完成通用任务，但真实使用时会遇到大量场景差异：Python 调试、前端构建、数据库迁移、浏览器操作、公司内部系统、特定代码规范。把所有知识写进核心 prompt 会让上下文膨胀；把所有能力写进核心代码会让工具边界失控。
-
-需要分清两件事：
-
-- 有些扩展只是“告诉 agent 怎么做”，例如调试流程、代码审查清单。
-- 有些扩展是“让 agent 能做新事情”，例如调用浏览器、访问 GitHub、查询外部 API。
-
-前者更适合 Skill，后者更适合 Plugin。
-
-## 解决方案：知识按需加载，能力显式注册
+- `SkillLoader`：从 `SKILL.md` 加载领域指导，注入 system prompt
+- `PluginLoader`：从 Python 插件动态注册新工具
 
 ```text
-Skill
-  SKILL.md
-  references/
-  scripts/
-  -> injected into prompt when relevant
-
-Plugin
-  Python module / connector
-  register_tools(registry)
-  -> adds executable tools
+Skill  -> 改变模型知道什么、如何做
+Plugin -> 改变模型能调用什么工具
 ```
 
-Skill 的重点是渐进披露：先读短说明，需要时再打开模板或脚本。Plugin 的重点是明确能力边界：注册了哪些工具、需要哪些权限、失败时如何报告。
+二者互补。调试 Python 项目可能需要 skill；查询天气、调用内部 API、操作数据库可能需要 plugin。
 
-## 为什么要区分 Skills 和 Plugins
+## 先建立心智模型
 
-走到 ch15，agent 已经有了固定的一组工具和运行时能力。下一步问题是扩展：不同项目、团队和任务需要不同知识，不可能全部写进核心代码，也不应该全部塞进 system prompt。
+### Skill 是文本能力
 
-Skill 更像可加载的知识包。它告诉 agent 在某类任务里应该遵循什么流程、参考哪些文件、怎样渐进读取上下文。好的 Skill 会控制信息量：先读入口说明，需要时再打开模板、脚本或参考资料，而不是一开始把所有内容注入上下文。
-
-Plugin 更像能力边界清晰的外部系统。它可能提供 MCP 工具、连接器、浏览器能力或第三方服务访问。和 Skill 相比，Plugin 不只是“告诉模型怎么做”，还会把新的可执行能力接入 harness，因此更需要权限、审计和配置边界。
-
-这一区分很重要：知识可以指导模型，能力必须由本地运行时控制。把二者分开，agent 才能既容易扩展，又不把安全边界交给提示词。
-
-## 工作原理
-
-SkillLoader 可以先扫描目录，读取每个 skill 的名称和简介。只有当用户请求或模型需要时，才加载完整 `SKILL.md`：
-
-```python
-skills = skill_loader.list_skills()
-selected = skill_loader.load("python-debugging")
-system_prompt += selected.instructions
-```
-
-PluginLoader 则走工具注册路径：
-
-```python
-module = import_plugin(path)
-module.register_tools(registry)
-```
-
-这两个入口都能扩展 agent，但风险级别不同。Skill 主要消耗上下文并影响模型行为；Plugin 会增加真实可执行动作，所以必须经过工具 schema、权限系统和 Hook 事件。
-
-## 相对 ch14 的变化
-
-| 组件 | ch14 | ch15 |
-| --- | --- | --- |
-| 目标 | 用现有 agent 做真实挑战 | 让 agent 可扩展 |
-| 知识来源 | 固定教材和 prompt | 按需加载 Skills |
-| 能力来源 | 内置工具 | Plugins 注册新工具 |
-| 安全重点 | 挑战中观察边界 | 扩展也必须走权限和工具协议 |
-
-## Skills
-
-Skill 目录格式：
+Skill 本质上是一份 Markdown 指南：
 
 ```text
 .tiny-claude-code/skills/python-debugging/SKILL.md
 ```
 
-`SkillLoader` 提供：
+里面可以写：
 
-- `list_skills()`：扫描所有 skill。
-- `load(skill_name)`：读取完整 `SKILL.md`。
-- `build_system_context(skill_names)`：生成 system prompt 片段。
+- 什么时候使用这个 skill
+- 推荐调试流程
+- 常用命令
+- 项目约定
+- 注意事项
 
-CLI 支持：
-
-```bash
-python scripts/dev.py run -- --skill python-debugging
-```
-
-REPL 支持：
+加载后，内容会进入 system prompt，影响模型决策。
 
 ```text
-/skill list
-/skill show python-debugging
+system prompt
+  |
+  +-- base instructions
+  +-- memory context
+  +-- skill summaries
+  +-- selected full skill text
 ```
 
-仓库还提供了示例 skill：
+### Plugin 是代码能力
 
-```text
-examples/skills/python-debugging/SKILL.md
-```
-
-## Plugins
-
-插件是普通 Python 文件，暴露一个函数：
+Plugin 是 Python 文件，暴露 `register_tools(registry)`：
 
 ```python
 def register_tools(registry):
     registry.register(MyTool())
 ```
 
-默认插件目录：
+Plugin 不只是提示模型“你可以查天气”，而是真的给 registry 加了一个可调用工具。
 
 ```text
-.tiny-claude-code/plugins/
+plugins/weather.py
+  |
+  v
+PluginLoader.load_plugins(registry)
+  |
+  v
+registry now has "weather"
 ```
 
-也可以用 CLI 指定：
+## Skill 的两层加载
 
-```bash
-python scripts/dev.py run -- --plugins examples/plugins
-```
-
-示例插件：
+如果把所有 skill 全文都塞进 system prompt，上下文会很快变大。所以本章使用两层策略：
 
 ```text
-examples/plugins/weather.py
+默认：只注入 skill 名称和摘要
+需要时：注入指定 skill 全文
 ```
 
-它注册了一个 deterministic `weather` 工具，方便本地测试插件机制。
+例如：
+
+```text
+/skill list
+/skill show python-debugging
+```
+
+`build_system_context()` 默认输出摘要；`build_system_context(["python-debugging"])` 输出该 skill 全文。
+
+## Plugin 的加载规则
+
+PluginLoader 扫描插件目录下的 `.py` 文件：
+
+```text
+examples/plugins/
+  weather.py
+```
+
+每个插件必须有：
+
+```python
+def register_tools(registry):
+    ...
+```
+
+如果缺少这个函数，loader 应该跳过并返回清楚的错误结果，而不是让整个 CLI 崩溃。
+
+## 本章要实现什么
+
+主要修改：
+
+- [skills.py](../../src/tiny_claude_code/skills.py)
+- [tools/plugin.py](../../src/tiny_claude_code/tools/plugin.py)
+- [cli.py](../../src/tiny_claude_code/cli.py)
+- [tools/__init__.py](../../src/tiny_claude_code/tools/__init__.py)
+
+需要实现：
+
+- `SkillLoader.__init__`
+- `list_skills`
+- `load`
+- `build_system_context`
+- `_summary`
+- `/skill list`
+- `/skill show <name>`
+- `PluginLoader.__init__`
+- `load_plugins`
+- `_load_one`
+- `_import_module`
+- 默认注册表加载插件
 
 ## 实现路线
 
-### 第一步：扫描 skill 目录
+### 第一步：扫描 skills
 
-先只读取 skill 名称和摘要，不要一开始加载所有内容。这样才能做到渐进披露。
+Skill 目录约定：
 
-### 第二步：加载 SKILL.md
+```text
+.tiny-claude-code/skills/<skill-name>/SKILL.md
+```
 
-当用户明确要求或 agent 判断相关时，再把完整 skill 注入 system prompt 或上下文。
+`list_skills()` 读取每个 SKILL.md，并生成摘要。摘要可以取标题后第一段或前若干字符。
 
-### 第三步：定义 plugin 接口
+### 第二步：加载指定 skill 全文
 
-Plugin 不应该随便修改全局状态。最小接口是 `register_tools(registry)`，让插件通过工具注册表暴露能力。
+`load(name)` 找到对应文件并返回 Markdown 文本。找不到时返回可读错误或抛出明确异常，保持 CLI 可处理。
 
-### 第四步：失败时跳过无效插件
+### 第三步：构建 system context
 
-插件加载失败不应该让整个 agent 崩溃。记录错误、跳过插件、继续启动。
+默认只列摘要：
+
+```text
+Available skills:
+- python-debugging: Run tests first.
+```
+
+指定 skill 时附带全文：
+
+```text
+Loaded skills:
+# Python Debugging
+...
+```
+
+### 第四步：实现 skill 命令
+
+CLI 支持：
+
+```text
+/skill list
+/skill show python-debugging
+```
+
+list 用于发现；show 用于查看全文。
+
+### 第五步：实现 plugin loader
+
+动态导入每个 `.py` 文件，检查是否有 `register_tools`，调用它注册工具，并返回加载结果。
+
+```text
+loaded=True  message="loaded weather.py"
+loaded=False message="missing register_tools"
+```
 
 ## 测试讲解
 
-Skill 测试要区分“发现 skill”和“加载完整 skill”。这能保证目录扫描不会把大量知识一次性塞进上下文。
-
-Plugin 测试要验证工具真的注册进 registry，并且无效插件会被跳过。插件系统的重点是可扩展，但不能牺牲启动稳定性。
-
-## 常见错误
-
-### 把 Skill 当成工具
-
-Skill 是知识，不是可执行动作。它指导模型，但不能直接产生副作用。
-
-### 插件绕过工具协议
-
-Plugin 增加能力时仍然应该注册成 Tool，走 schema、dispatch、权限和 hook。
-
-### 一次性加载所有 Skill
-
-这会迅速污染上下文。Skill 的价值在于按需加载，而不是把资料库全塞给模型。
-
-## 运行测试
+运行：
 
 ```bash
 python scripts/dev.py test --ch 15
@@ -185,22 +191,98 @@ python scripts/dev.py test --ch 15
 
 测试覆盖：
 
-- skill 列表和完整加载
-- skill summary 和 system prompt 注入
-- `/skill list` 与 `/skill show`
-- plugin 注册工具
-- 无效 plugin 不崩溃
-- 默认 registry 加载 plugin
+- SkillLoader 能列出 skill
+- load 能返回完整 SKILL.md
+- system context 可以包含摘要或全文
+- system prompt 能包含 skill context
+- `/skill list` 和 `/skill show` 可用
+- PluginLoader 能注册工具
+- 无效插件会跳过
+- 默认注册表会加载插件
 
-## 设计边界
+## 验收任务
 
-Skill 是知识，Plugin 是能力。
+仓库已经有示例 skill：
 
-- Skill 适合写流程、约束、项目约定、调试方法。
-- Plugin 适合接入新的工具、API、计算逻辑。
+```text
+examples/skills/python-debugging/SKILL.md
+```
 
-不要把一次性任务写成插件，也不要把需要执行代码的能力伪装成 skill。
+你可以复制到工作区 skill 目录：
+
+```text
+.tiny-claude-code/skills/python-debugging/SKILL.md
+```
+
+然后运行：
+
+```text
+/skill list
+/skill show python-debugging
+```
+
+再尝试：
+
+```text
+使用 python-debugging skill 帮我调试 examples/buggy-python-project
+```
+
+插件验收可以使用：
+
+```text
+examples/plugins/weather.py
+```
+
+把它作为 plugin_dir 传入默认注册表后，确认新工具能被 dispatch。
+
+## 常见错误
+
+### 把所有 skill 全文默认注入
+
+skill 多了以后会浪费上下文。默认注入摘要，按需注入全文。
+
+### plugin 导入失败导致整个程序退出
+
+插件是扩展点，必须隔离失败。坏插件应该返回失败结果，其他插件继续加载。
+
+### register_tools 没有接收 registry
+
+插件接口要稳定：插件负责注册，registry 负责保存。
+
+### skill 和 memory 混淆
+
+memory 是项目事实；skill 是通用流程或能力说明。二者都进 system prompt，但来源和用途不同。
+
+## 思考题
+
+1. 什么内容适合写成 skill，什么内容适合写进 memory？
+2. plugin 执行是否也要经过权限系统？
+3. 动态导入插件有什么安全风险？
+4. 如何避免 skill 太长导致上下文浪费？
+
+## Bonus Tasks
+
+- 给 skill 增加 frontmatter，例如 description、triggers。
+- 支持 `/skill use <name>` 把全文注入当前会话。
+- 给 plugin 增加 manifest。
+- 在加载插件前做权限确认。
 
 ## 本章小结
 
-ch15 给 tiny-claude-code 留下了扩展出口。核心 agent 仍然很小，但它现在可以通过 skill 学习任务流程，通过 plugin 获得新工具。
+你完成了 tiny-claude-code 的扩展层：
+
+```text
+Skills  -> 给模型更好的领域指导
+Plugins -> 给 harness 更多真实工具
+```
+
+至此，课程从最小 agent loop 走到了一个可扩展 coding agent：
+
+```text
+loop + tools + permissions + hooks + recovery
++ context + session + memory + tasks
++ subagents + background + cron
++ skills + plugins
+```
+
+后续真正的工作，是在自己的项目里持续打磨这些边界：工具要可靠，权限要清楚，上下文要可控，扩展要可审计。
