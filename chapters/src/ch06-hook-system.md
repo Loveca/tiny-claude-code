@@ -1,178 +1,155 @@
 # ch06: Hook System
 
-> 扩展逻辑挂在循环上，不写死在循环里。
+> 不要把所有机制都塞进 agent loop；让循环在关键节点发出事件。
 
 ## 本章目标
 
-ch05 已经实现了权限检查。如果把权限、日志、停止事件、未来的上下文压缩都硬编码进 `agent_loop`，循环会迅速膨胀。本章引入 `HookSystem`，把扩展点抽象成事件。
+ch05 把权限检查放到了工具执行前。这个位置很重要，但如果继续把日志、权限、统计、会话保存、通知都写进 agent loop，核心循环会再次变得臃肿。
 
-当前实现支持：
-
-- `UserPromptSubmit`
-- `PreToolUse`
-- `PostToolUse`
-- `Stop`
-
-其中 `PreToolUse` 返回非 `None` 会短路，通常用于拒绝工具调用。
-
-## 问题：主循环不能承受所有横切逻辑
-
-ch05 里权限已经能工作，但如果直接把权限、日志、审计、通知、压缩、统计都塞进 `agent_loop`，主循环会越来越难读。agent loop 最重要的职责是维持模型和工具之间的往返协议，它不应该知道每一种附加能力的细节。
-
-可以把这类逻辑理解成“围绕循环发生”的事情：
+本章实现 `HookSystem`。agent loop 在关键节点触发事件，外部模块注册回调来扩展行为。
 
 ```text
-User prompt submit
-        |
-        v
-    agent loop
-        |
-  before tool use  -> permission / audit
-        |
-  after tool use   -> log / metrics / notification
-        |
-        v
-Stop
+UserPromptSubmit -> 用户提交输入后
+PreToolUse       -> 工具执行前
+PostToolUse      -> 工具执行后
+Stop             -> agent 本轮结束时
 ```
 
-这些点不是业务工具本身，却又确实需要参与执行流程。Hook 系统就是给它们一个稳定入口。
+权限系统会变成 `PreToolUse` hook。工具日志会变成 `PostToolUse` hook。结束日志会变成 `Stop` hook。
 
-## 解决方案：把生命周期事件显式化
+## 先建立心智模型
 
-本章把循环中的关键位置命名为事件，并允许外部 callback 注册到事件上。agent loop 只负责触发事件，不负责知道事件背后有多少逻辑。
+### Hook 是“在这里插一段逻辑”
 
-```python
-hooks.trigger("UserPromptSubmit", prompt=prompt)
-denial = hooks.trigger("PreToolUse", tool_name=name, tool_input=input)
-result = registry.dispatch(name, input)
-hooks.trigger("PostToolUse", tool_name=name, result=result)
-hooks.trigger("Stop", messages=messages, response=final_text)
+agent loop 的主路径仍然是：
+
+```text
+call LLM -> maybe tool_use -> dispatch tool -> append result -> repeat
 ```
 
-这带来一个重要收益：新增机制时优先问“它应该挂在哪个生命周期点”，而不是“我要往 agent.py 哪一段插代码”。
+hook 不改变主路径的含义，只是在节点旁边挂扩展逻辑。
 
-## 为什么需要 Hook
-
-Agent loop 应该保持稳定：接收消息、调用模型、解析 tool_use、执行工具、回填结果。可真实产品里总会有额外需求，例如执行前审计、执行后记录、命令完成提醒、失败时收集诊断。如果每增加一个需求就改主循环，循环会很快变成难以推理的巨型函数。
-
-Hook 的价值是把这些横切逻辑挂在生命周期事件上。本章只实现四个事件：工具执行前、工具执行后、agent turn 开始、agent turn 结束。它们覆盖了最小 agent 的关键边界，也足够展示扩展点设计的基本形态。
-
-需要注意的是，Hook 不是权限系统的替代品。权限是强制安全边界，Hook 是扩展机制；Hook 可以记录、提示、短路一部分流程，但不能绕过 `deny` 这样的硬规则。这个区分能避免把“可扩展”做成“任何插件都能破坏核心不变量”。
-
-本章的 non-`None` 短路返回是一种常见设计：普通 Hook 返回 `None` 表示继续执行；返回具体结果表示它接管了这一步。这样扩展能力可以被显式表达，而不是靠修改全局状态暗中影响流程。
-
-## Hook 规则
-
-hook 有两个关键行为：
-
-- 按 priority 从高到低执行。
-- 任一 callback 返回非 `None`，事件立即短路并返回该值。
-
-这让权限系统可以成为普通 hook：
-
-```python
-hooks.register("PreToolUse", permissions.as_hook, priority=100)
+```text
+              +-------------------+
+tool_use ---> | trigger PreToolUse | -- denial? --> skip tool
+              +-------------------+
+                       |
+                       v
+                 dispatch tool
+                       |
+                       v
+              +--------------------+
+              | trigger PostToolUse |
+              +--------------------+
 ```
 
-也让日志 hook 不影响主流程：
+### 有些 hook 可以短路
 
-```python
-hooks.register("PostToolUse", tool_log.post_tool_use)
-hooks.register("Stop", stop_log.stop)
+`PreToolUse` 和其他事件不同。权限检查如果返回拒绝原因，工具就不能执行。所以 hook system 需要支持短路：
+
+```text
+callback returns None     -> 继续下一个 hook
+callback returns "denied" -> 停止，返回这个结果
 ```
 
-## 工作原理
+这让权限 hook 可以拦截工具调用。
 
-HookSystem 的核心是一个按事件分组的 callback 列表。注册时保存优先级，触发时排序执行：
+## HookSystem 要提供什么
+
+最小接口只有两个：
 
 ```python
-class HookSystem:
-    def register(self, event, callback, priority=0):
-        self._hooks[event].append((priority, callback))
-
-    def trigger(self, event, **payload):
-        callbacks = sorted(self._hooks[event], reverse=True)
-        for _, callback in callbacks:
-            result = callback(**payload)
-            if result is not None:
-                return result
-        return None
+hooks.register(event, callback, priority=0)
+hooks.trigger(event, *args)
 ```
 
-`PreToolUse` 的短路语义让权限检查可以阻止工具执行；`PostToolUse` 和 `Stop` 通常只做观察和记录，所以返回 `None`。同一个机制在不同事件上的语义不同，这是 Hook 设计里最容易忽略的点。
+priority 用来控制执行顺序。数字越小越早执行，或者你也可以选择数字越大越早执行；关键是测试和实现保持一致。
 
-## 相对 ch05 的变化
+```text
+PreToolUse hooks:
+  priority 0  -> permission
+  priority 10 -> audit log
+```
 
-| 组件 | ch05 | ch06 |
-| --- | --- | --- |
-| 权限接入 | agent loop 直接调用权限逻辑 | 权限注册成 `PreToolUse` hook |
-| 扩展方式 | 修改主循环 | 注册事件 callback |
-| 执行顺序 | 固定代码顺序 | priority 控制顺序 |
-| 短路能力 | 权限专用 | 任意 hook 可按事件语义短路 |
+如果前面的 permission 返回拒绝结果，后面的 hook 可以不用执行。
 
-## Agent Loop 如何使用
+## 本章要实现什么
 
-工具执行前：
+主要修改：
+
+- [hooks.py](../../src/tiny_claude_code/hooks.py)
+- [permissions.py](../../src/tiny_claude_code/permissions.py)
+- [agent.py](../../src/tiny_claude_code/agent.py)
+
+需要实现：
+
+- `HookSystem.__init__`
+- `register`
+- `trigger`
+- `ToolLogHook.post_tool_use`
+- `StopLogHook.stop`
+- 权限管理器的 `as_hook`
+- agent loop 中的 hook 触发点
+
+## 实现路线
+
+### 第一步：保存事件到回调列表
+
+内部结构可以是：
 
 ```python
-denial = hooks.trigger("PreToolUse", tool_name=name, tool_input=input)
-if denial is not None:
-    output = str(denial)
+self._hooks = {
+    "PreToolUse": [(priority, callback), ...],
+}
+```
+
+注册后按 priority 排序。
+
+### 第二步：实现 trigger 短路
+
+遍历回调：
+
+```text
+for callback in callbacks:
+    result = callback(*args)
+    if result is not None:
+        return result
+return None
+```
+
+这个规则简单但非常有用：普通日志 hook 返回 None，权限拒绝 hook 返回文本。
+
+### 第三步：接入 agent loop
+
+在工具执行前：
+
+```text
+denial = hooks.trigger("PreToolUse", name, input)
+if denial:
+    result = denial
 else:
-    output = registry.dispatch(name, input)
+    result = registry.dispatch(...)
 ```
 
 工具执行后：
 
-```python
-hooks.trigger("PostToolUse", tool_name=name, tool_input=input, result=output)
+```text
+hooks.trigger("PostToolUse", name, input, result)
 ```
 
-结束时：
+最终回复前：
 
-```python
-hooks.trigger("Stop", messages=messages, response=final_text)
+```text
+hooks.trigger("Stop", final_text)
 ```
 
-## 实现路线
+### 第四步：把权限变成 hook
 
-### 第一步：实现事件到回调的映射
-
-HookSystem 本质上是 `event -> callbacks`。先让注册和触发跑通，再考虑优先级和短路。
-
-### 第二步：加入 priority
-
-权限类 hook 通常要比日志类 hook 更早执行。priority 表达的是扩展点之间的依赖关系，不只是排序装饰。
-
-### 第三步：把短路写进 trigger
-
-短路语义应该由 HookSystem 统一处理，而不是散落在 agent loop 里。这样主循环不需要知道哪个 hook 会阻止执行。
-
-### 第四步：把权限迁移成 hook
-
-迁移完成后，agent loop 不再直接调用权限规则。它只触发 `PreToolUse`，然后根据返回值决定是否继续 dispatch。
+`PermissionManager.as_hook()` 返回一个函数。这个函数接收工具名和输入，内部调用 `check`，如果拒绝就返回拒绝文本，否则返回 None。
 
 ## 测试讲解
 
-本章测试要分两层：HookSystem 自身是否正确，以及 agent loop 是否在正确的生命周期点触发事件。前者测 priority、短路和空 hook；后者测工具执行前后与最终停止事件。
-
-最关键的测试是：当 `PreToolUse` 返回拒绝结果时，真实工具 handler 没有被调用。这能证明 Hook 不只是记录日志，而是真的参与了控制流。
-
-## 常见错误
-
-### Hook payload 暴露太多内部对象
-
-Hook 只应该拿到事件需要的信息。把整个 agent 内部状态都暴露出去，会让扩展点反过来绑死主循环结构。
-
-### 所有事件都允许短路
-
-`PreToolUse` 短路合理；`PostToolUse` 通常只是观察。短路语义必须和事件含义匹配。
-
-### priority 方向不清楚
-
-项目必须明确“数字越大越早”还是“数字越小越早”，并用测试固定下来。
-
-## 运行测试
+运行：
 
 ```bash
 python scripts/dev.py test --ch 06
@@ -180,22 +157,62 @@ python scripts/dev.py test --ch 06
 
 测试覆盖：
 
-- 多个 hook 按优先级执行
-- `PreToolUse` 能阻止工具执行
+- 多个 hook 按 priority 执行
+- `PreToolUse` 返回拒绝时，工具不会执行
 - `PostToolUse` 能收到工具名和结果
-- `Stop` 在最终响应时触发
-- 没有 hook 时正常返回 `None`
+- `Stop` 在最终回复时触发
+- 没有注册 hook 时返回 None，不影响主流程
 
 ## 验收任务
 
-行为应与 ch05 相同：权限仍然生效。但结构上，权限已经从主循环硬编码变成了 hook。
+运行 agent，并尝试一个会触发权限检查的操作：
+
+```text
+读取 ../secret.txt
+```
+
+行为应该和 ch05 一样，但内部结构更干净：agent loop 触发 `PreToolUse`，权限 hook 决定拒绝。
+
+## 常见错误
+
+### hook 返回值被忽略
+
+`PreToolUse` 的返回值必须能阻止工具执行。否则权限 hook 只是日志，没有安全意义。
+
+### 所有 hook 都短路
+
+短路规则是“返回非 None 才停止”。日志 hook 应该返回 None，避免拦截后续逻辑。
+
+### priority 排序不稳定
+
+测试会检查执行顺序。注册后要排序，而不是依赖 dict 顺序。
+
+### agent loop 仍然直接调用 PermissionManager
+
+本章目标是解耦。权限应该通过 hook 进入 loop。
 
 ## 思考题
 
-1. 哪些逻辑适合做 hook，哪些不适合？
-2. `PreToolUse` 短路后，是否还应该触发 `PostToolUse`？
-3. priority 应该越大越早执行，还是越小越早执行？
+1. hook 和直接函数调用相比，优点和代价是什么？
+2. 哪些事件应该允许短路？哪些不应该？
+3. 如果两个 hook 都想修改工具输入，应该如何设计？
+4. hook 出错时应该终止 agent 还是记录错误后继续？
+
+## Bonus Tasks
+
+- 支持移除 hook。
+- 给 hook 增加名称，方便日志和调试。
+- 记录每个 hook 的耗时。
+- 区分 `PreToolUse` 的 deny 和 transform 两种返回值。
 
 ## 本章小结
 
-Hook 的价值不是功能多，而是让主循环保持清晰。后续章节可以继续加机制，但 agent loop 的形状不用不断重写。
+你把 agent loop 从“所有机制的堆放处”变成了事件源：
+
+```text
+核心循环保持简单
+扩展逻辑挂在事件上
+权限、日志、保存都可以独立演进
+```
+
+下一章会处理另一个真实运行中一定会遇到的问题：LLM API 和工具调用会失败，agent 需要恢复能力。
