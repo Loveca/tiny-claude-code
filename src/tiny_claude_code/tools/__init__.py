@@ -12,20 +12,63 @@ class ToolRegistry:
     """Name-based registry for tool schemas and execution handlers."""
 
     def __init__(self) -> None:
-        raise NotImplementedError('TODO: implement __init__')
+        self._tools: dict[str, Tool] = {}
 
     def register(self, tool: Tool) -> None:
-        raise NotImplementedError('TODO: implement register')
+        self._tools[tool.name] = tool
 
     def get_schemas(self) -> list[dict[str, Any]]:
-        raise NotImplementedError('TODO: implement get_schemas')
+        return [tool.schema for tool in self._tools.values()]
 
     def dispatch(self, name: str, tool_input: dict[str, Any]) -> str:
-        raise NotImplementedError('TODO: implement dispatch')
+        tool = self._tools.get(name)
+        if tool is None:
+            return f"Error: unknown tool '{name}'"
+        try:
+            return str(tool.execute(**tool_input))
+        except TypeError as exc:
+            return f"Error: invalid input for tool '{name}': {exc}"
+        except Exception as exc:
+            return f"Error: tool '{name}' failed: {exc}"
 
 def create_default_registry(workspace: str | Path | None=None, client: Any=None, task_manager: Any=None, background_manager: Any=None, cron_scheduler: Any=None, plugin_dir: str | Path | None=None) -> ToolRegistry:
-    raise NotImplementedError('TODO: implement create_default_registry')
+    registry = ToolRegistry()
+    registry.register(ShellTool(workspace=workspace))
+    registry.register(ReadTool(workspace=workspace))
+    registry.register(WriteTool(workspace=workspace))
+    registry.register(SearchTool(workspace=workspace))
+    return registry
 __all__ = ['Tool', 'ToolRegistry', 'ShellTool', 'ReadTool', 'WriteTool', 'SearchTool', 'TaskManager', 'TodoWriteTool', 'SubAgentTool', 'BackgroundManager', 'BackgroundSubmitTool', 'BackgroundPollTool', 'CronScheduler', 'CronScheduleTool', 'PluginLoader', 'create_default_registry']
 
 def __getattr__(name: str) -> Any:
-    raise NotImplementedError('TODO: implement __getattr__')
+    if name in {"TaskManager", "TodoWriteTool"}:
+        from tiny_claude_code.tasks import TaskManager, TodoWriteTool
+
+        return {"TaskManager": TaskManager, "TodoWriteTool": TodoWriteTool}[name]
+    if name == "SubAgentTool":
+        from tiny_claude_code.subagent import SubAgentTool
+
+        return SubAgentTool
+    if name in {"BackgroundManager", "BackgroundSubmitTool", "BackgroundPollTool"}:
+        from tiny_claude_code.background import (
+            BackgroundManager,
+            BackgroundPollTool,
+            BackgroundSubmitTool,
+        )
+
+        return {
+            "BackgroundManager": BackgroundManager,
+            "BackgroundSubmitTool": BackgroundSubmitTool,
+            "BackgroundPollTool": BackgroundPollTool,
+        }[name]
+    if name in {"CronScheduler", "CronScheduleTool"}:
+        from tiny_claude_code.cron import CronScheduleTool, CronScheduler
+
+        return {"CronScheduler": CronScheduler, "CronScheduleTool": CronScheduleTool}[
+            name
+        ]
+    if name == "PluginLoader":
+        from tiny_claude_code.tools.plugin import PluginLoader
+
+        return PluginLoader
+    raise AttributeError(name)
