@@ -25,7 +25,14 @@ class LLMClient:
         - MODEL_ID: model ID (default: claude-sonnet-4-6)
         - ANTHROPIC_BASE_URL: optional, for compatible API providers
         """
-        raise NotImplementedError('TODO: implement __init__')
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        base_url = os.environ.get("ANTHROPIC_BASE_URL")
+        self.model = os.environ.get("MODEL_ID", "claude-sonnet-4-6")
+
+        kwargs: dict[str, Any] = {"api_key": api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        self.client = anthropic.Anthropic(**kwargs)
 
     def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None=None, max_tokens: int=8000, system: str | None=None) -> anthropic.types.Message:
         """Send messages to the LLM and return the response.
@@ -40,4 +47,13 @@ class LLMClient:
 
         ch07: you will come back here to add ErrorHandler retry logic.
         """
-        raise NotImplementedError('TODO: implement chat')
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "messages": messages,
+        }
+        if tools:
+            kwargs["tools"] = tools
+        if system:
+            kwargs["system"] = system
+        return self.client.messages.create(**kwargs)

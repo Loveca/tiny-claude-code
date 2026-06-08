@@ -24,7 +24,12 @@ from tiny_claude_code.tools import create_default_registry
 SYSTEM_PROMPT = "You are a coding agent working in {workspace}. Use the available tools to inspect files, edit code, and run commands. Act to solve the user's task, then summarize what changed."
 
 def build_system_prompt(workspace: Path, memory_context: str='', skill_context: str='') -> str:
-    raise NotImplementedError('TODO: implement build_system_prompt')
+    system = SYSTEM_PROMPT.format(workspace=workspace)
+    if memory_context:
+        system += "\n\n" + memory_context
+    if skill_context:
+        system += "\n\n" + skill_context
+    return system
 
 def main(argv: list[str] | None=None) -> None:
     """REPL main loop.
@@ -43,12 +48,83 @@ def main(argv: list[str] | None=None) -> None:
     ch09: add /compact command
     ch10: add --resume and /memory commands
     """
-    raise NotImplementedError('TODO: implement main')
+    parser = argparse.ArgumentParser(description="tiny-claude-code")
+    parser.add_argument(
+        "--resume",
+        nargs="?",
+        const="latest",
+        help="Resume the latest session or the given session id",
+    )
+    parser.add_argument(
+        "--skill",
+        action="append",
+        default=[],
+        help="Load a named skill from .tiny-claude-code/skills",
+    )
+    parser.add_argument(
+        "--plugins",
+        default=".tiny-claude-code/plugins",
+        help="Directory containing Python tool plugins",
+    )
+    args = parser.parse_args(argv)
+
+    if args.resume:
+        print("--resume is introduced in ch10 and is not available in ch01.")
+    if args.skill:
+        print("--skill is introduced in ch15 and is not available in ch01.")
+
+    workspace = Path.cwd()
+    client = LLMClient()
+    messages: list[dict] = []
+    system = build_system_prompt(workspace)
+
+    print("tiny-claude-code (type /exit to quit)")
+    while True:
+        try:
+            user_input = input("> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nBye!")
+            break
+
+        if not user_input:
+            continue
+        if user_input in ("/exit", "/quit"):
+            print("Bye!")
+            break
+        if user_input.startswith(("/compact", "/memory", "/skill")):
+            print("This command is introduced in a later chapter.")
+            continue
+
+        messages.append({"role": "user", "content": user_input})
+        response = agent_loop(
+            messages,
+            tool_handlers=None,
+            client=client,
+            system=system,
+        )
+        print(f"\n{response}\n")
 
 def handle_memory_command(memory: MemoryManager, command: str) -> str:
-    raise NotImplementedError('TODO: implement handle_memory_command')
+    parts = shlex.split(command)
+    if len(parts) >= 4 and parts[1] == "add":
+        title = parts[2]
+        content = " ".join(parts[3:])
+        path = memory.save("user", title, content)
+        return f"Saved memory: {path.name}"
+    if len(parts) >= 2 and parts[1] == "list":
+        index = memory.build_index()
+        return index.read_text(encoding="utf-8")
+    return 'Usage: /memory add "title" "content" or /memory list'
 
 def handle_skill_command(skills: SkillLoader, command: str) -> str:
-    raise NotImplementedError('TODO: implement handle_skill_command')
+    parts = shlex.split(command)
+    if len(parts) >= 2 and parts[1] == "list":
+        found = skills.list_skills()
+        if not found:
+            return "No skills found."
+        return "\n".join(f"- {skill.name}: {skill.summary}" for skill in found)
+    if len(parts) >= 3 and parts[1] == "show":
+        return skills.load(parts[2])
+    return 'Usage: /skill list or /skill show "name"'
 if __name__ == '__main__':
     main()
