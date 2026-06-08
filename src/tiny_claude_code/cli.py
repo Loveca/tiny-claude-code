@@ -68,16 +68,25 @@ def main(argv: list[str] | None=None) -> None:
     )
     args = parser.parse_args(argv)
 
-    if args.resume:
-        print("--resume is introduced in ch10 and is not available in ch01.")
     if args.skill:
         print("--skill is introduced in ch15 and is not available in ch01.")
 
     workspace = Path.cwd()
     client = LLMClient()
-    messages: list[dict] = []
-    system = build_system_prompt(workspace)
+    sessions = SessionManager(workspace)
+    memory = MemoryManager(workspace)
+    if args.resume:
+        session_id = (
+            sessions.latest_session_id() if args.resume == "latest" else args.resume
+        )
+        messages = sessions.load(session_id) if session_id else []
+        session_id = session_id or sessions.new_session_id()
+    else:
+        session_id = sessions.new_session_id()
+        messages: list[dict] = []
+
     tool_handlers = create_default_registry(workspace)
+    system = build_system_prompt(workspace, memory.build_system_context())
     permissions = PermissionManager(workspace=workspace)
     hooks = HookSystem()
     tool_log = ToolLogHook()
@@ -100,13 +109,19 @@ def main(argv: list[str] | None=None) -> None:
         if not user_input:
             continue
         if user_input in ("/exit", "/quit"):
+            sessions.save(session_id, messages, {"workspace": str(workspace)})
             print("Bye!")
             break
         if user_input == "/compact":
             messages[:] = compact_manager.compact(messages, client)
+            sessions.save(session_id, messages, {"workspace": str(workspace)})
             print(f"Compacted conversation to {len(messages)} messages.")
             continue
-        if user_input.startswith(("/memory", "/skill")):
+        if user_input.startswith("/memory"):
+            print(handle_memory_command(memory, user_input))
+            system = build_system_prompt(workspace, memory.build_system_context())
+            continue
+        if user_input.startswith("/skill"):
             print("This command is introduced in a later chapter.")
             continue
 
@@ -127,6 +142,7 @@ def main(argv: list[str] | None=None) -> None:
             context_manager=context_manager,
             compact_manager=compact_manager,
         )
+        sessions.save(session_id, messages, {"workspace": str(workspace)})
         print(f"\n{response}\n")
 
 def handle_memory_command(memory: MemoryManager, command: str) -> str:
