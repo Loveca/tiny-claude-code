@@ -95,7 +95,10 @@ def main(argv: list[str] | None=None) -> None:
     error_handler = ErrorHandler()
     context_manager = ContextManager()
     compact_manager = CompactManager()
+    progress = ProgressHook()
     hooks.register("PreToolUse", permissions.as_hook, priority=100)
+    hooks.register("PreToolUse", progress.pre_tool_use)
+    hooks.register("PostToolUse", progress.post_tool_use)
     hooks.register("PostToolUse", tool_log.post_tool_use)
     hooks.register("Stop", stop_log.stop)
 

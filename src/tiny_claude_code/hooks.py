@@ -57,8 +57,23 @@ class ProgressHook:
 
     def pre_tool_use(self, tool_name: str, tool_input: dict[str, Any], **_: Any) -> None:
         """Print the tool name and key input parameter before execution."""
-        raise NotImplementedError('TODO: implement pre_tool_use')
+        detail = (
+            tool_input.get("command")
+            or tool_input.get("path")
+            or tool_input.get("pattern")
+            or ""
+        )
+        if len(detail) > 60:
+            detail = detail[:60] + "…"
+        print(f"  ⚙ {tool_name}  {detail}", flush=True)
 
     def post_tool_use(self, tool_name: str, tool_input: dict[str, Any], result: str, **_: Any) -> None:
         """Print a short preview of the tool result after execution."""
-        raise NotImplementedError('TODO: implement post_tool_use')
+        lines = result.splitlines()
+        preview = "\n    ".join(lines[:self.PREVIEW_LINES])
+        suffix = (
+            f"\n    … ({len(lines) - self.PREVIEW_LINES} more lines)"
+            if len(lines) > self.PREVIEW_LINES
+            else ""
+        )
+        print(f"    {preview}{suffix}", flush=True)
