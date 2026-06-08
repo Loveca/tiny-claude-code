@@ -2,7 +2,7 @@
 
 Build a Claude Code-style coding agent from scratch in 15 chapters.
 
-`tiny-claude-code` is a hands-on tutorial for developers who want to understand how coding agents actually work: the agent loop, tool calling, shell commands, file access, permission checks, hooks, context compaction, memory, tasks, subagents, background jobs, and plugins.
+`tiny-claude-code` is a Python AI coding agent tutorial for developers who want to understand how tools like Claude Code, Codex, Cursor, and other LLM coding assistants work under the hood: the agent loop, tool calling, shell commands, file access, permission checks, hooks, context compaction, memory, tasks, subagents, background jobs, and plugins.
 
 Unlike a black-box demo, this repository gives you both:
 
@@ -10,6 +10,17 @@ Unlike a black-box demo, this repository gives you both:
 - `src/tiny_claude_code_ref/`: a complete reference implementation
 
 You can learn chapter by chapter, run focused tests without an API key, then compare your implementation against the reference agent.
+
+## What You Will Learn
+
+This project is useful if you are searching for:
+
+- how to build a coding agent from scratch
+- how Claude Code-style tool calling works
+- how to implement an LLM agent loop in Python
+- how `tool_use` and `tool_result` messages work
+- how to add shell, file, memory, hooks, subagents, and plugins to an AI coding assistant
+- how to test an agent without paying for LLM API calls
 
 ## Preview
 
@@ -53,6 +64,13 @@ Most agent tutorials stop at "call an LLM and print the answer." Real coding age
 - Todo tracking, subagents, background work, cron jobs, skills, and plugins
 
 This project builds those pieces one at a time, with tests for each chapter.
+
+## Who This Is For
+
+- Python developers who want to build their own AI coding assistant
+- LLM app builders who want a practical agent framework tutorial
+- Engineers trying to understand Claude Code, Codex, Cursor-style agents, or tool calling systems
+- Students who prefer small, tested chapters over a large finished framework
 
 ## Quick Start
 
@@ -188,6 +206,24 @@ tiny-claude-code/
 - Mock LLM tests do not require an API key.
 - `examples/simple-bug/`, `examples/buggy-python-project/`, and `examples/tiny-web-app/` are designed as agent practice projects.
 - Runtime session and memory files are stored under `.tiny-claude-code/`.
+
+## FAQ
+
+### Is this a Claude Code clone?
+
+It is not a production clone. It is a small educational implementation that rebuilds the core ideas behind a Claude Code-style coding agent: message loops, tool use, tool results, shell access, file tools, permissions, memory, subagents, and plugins.
+
+### Do I need an Anthropic API key?
+
+No API key is needed for chapter tests. The tests use a mock LLM client. You only need a real API key when running the interactive agent against a live model.
+
+### Can I use this with OpenAI, DeepSeek, Kimi, GLM, or other models?
+
+The default client uses the Anthropic SDK and Anthropic Messages API shape. Compatible providers can work through `ANTHROPIC_BASE_URL`. Providers that only expose OpenAI-compatible chat completions need a small adapter in `llm.py`.
+
+### Why not use LangChain or another agent framework?
+
+The goal is to learn the mechanics directly. This repository keeps the implementation small enough that you can read the code, implement each chapter, and understand where every part of the agent harness belongs.
 
 ## License
 
