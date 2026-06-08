@@ -37,3 +37,22 @@ class StopLogHook:
 
     def stop(self, response: str, **_: Any) -> None:
         raise NotImplementedError('TODO: implement stop')
+
+class ProgressHook:
+    """Prints tool execution progress to stdout so users can see what the agent is doing.
+
+    Register pre_tool_use on PreToolUse and post_tool_use on PostToolUse:
+
+        hooks.register("PreToolUse", progress.pre_tool_use)
+        hooks.register("PostToolUse", progress.post_tool_use)
+    """
+
+    PREVIEW_LINES = 5
+
+    def pre_tool_use(self, tool_name: str, tool_input: dict[str, Any], **_: Any) -> None:
+        """Print the tool name and key input parameter before execution."""
+        raise NotImplementedError('TODO: implement pre_tool_use')
+
+    def post_tool_use(self, tool_name: str, tool_input: dict[str, Any], result: str, **_: Any) -> None:
+        """Print a short preview of the tool result after execution."""
+        raise NotImplementedError('TODO: implement post_tool_use')

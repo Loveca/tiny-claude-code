@@ -73,6 +73,32 @@ PreToolUse hooks:
 
 如果前面的 permission 返回拒绝结果，后面的 hook 可以不用执行。
 
+## 你有没有发现这个问题
+
+在前面几章里，每次输入一个需要工具的任务，比如"帮我看看这个目录里有什么文件"——CLI 会陷入一段沉默。你不知道 agent 在做什么，跑了什么命令，有没有卡住，还是正在等 API。只能盯着光标干等，直到最终回复突然出现。
+
+Claude Code 不是这样的。它会实时打印每一步：
+
+```text
+> 帮我看看 examples/ 目录里有什么文件
+
+  ⚙ bash  ls examples/
+  exit_code: 0
+  simple-bug/
+  buggy-python-project/
+  ...
+
+examples/ 目录下有三个子目录：...
+```
+
+这种可见性不是靠特殊 API 实现的，**用 hook 就能做到**。
+
+`PreToolUse` 在工具执行前触发——这时打印工具名和参数，用户立刻知道 agent 要做什么，不用等结果。
+
+`PostToolUse` 在工具执行后触发——这时打印结果的前几行，用户看到实际输出，不再是黑盒。
+
+本章要实现的 `ProgressHook` 就负责这件事。
+
 ## 本章要实现什么
 
 主要修改：
@@ -80,6 +106,7 @@ PreToolUse hooks:
 - [hooks.py](../../src/tiny_claude_code/hooks.py)
 - [permissions.py](../../src/tiny_claude_code/permissions.py)
 - [agent.py](../../src/tiny_claude_code/agent.py)
+- [cli.py](../../src/tiny_claude_code/cli.py)
 
 需要实现：
 
@@ -88,8 +115,11 @@ PreToolUse hooks:
 - `trigger`
 - `ToolLogHook.post_tool_use`
 - `StopLogHook.stop`
+- `ProgressHook.pre_tool_use`
+- `ProgressHook.post_tool_use`
 - 权限管理器的 `as_hook`
 - agent loop 中的 hook 触发点
+- cli.py 中注册 `ProgressHook`
 
 ## 实现路线
 
@@ -147,6 +177,47 @@ hooks.trigger("Stop", final_text)
 
 `PermissionManager.as_hook()` 返回一个函数。这个函数接收工具名和输入，内部调用 `check`，如果拒绝就返回拒绝文本，否则返回 None。
 
+### 第五步：实现 ProgressHook
+
+`ProgressHook` 有两个方法，分别挂在 `PreToolUse` 和 `PostToolUse` 上。
+
+**pre_tool_use**：工具执行前打印工具名和最有意义的那个参数。不同工具的关键参数不同：
+
+```text
+bash    -> command
+read    -> path
+write   -> path
+search  -> pattern
+```
+
+可以用 `tool_input.get("command") or tool_input.get("path") or tool_input.get("pattern") or ""` 来取。如果参数太长就截断到 60 字符。
+
+```python
+detail = tool_input.get("command") or tool_input.get("path") or tool_input.get("pattern") or ""
+if len(detail) > 60:
+    detail = detail[:60] + "…"
+print(f"  ⚙ {tool_name}  {detail}", flush=True)
+```
+
+**post_tool_use**：工具执行后打印结果的前 `PREVIEW_LINES`（默认 5）行。超出的部分显示 `… (N more lines)`。
+
+```python
+lines = result.splitlines()
+preview = "\n    ".join(lines[:self.PREVIEW_LINES])
+suffix = f"\n    … ({len(lines) - self.PREVIEW_LINES} more lines)" if len(lines) > self.PREVIEW_LINES else ""
+print(f"    {preview}{suffix}", flush=True)
+```
+
+**在 cli.py 中注册**：
+
+```python
+progress = ProgressHook()
+hooks.register("PreToolUse", progress.pre_tool_use)
+hooks.register("PostToolUse", progress.post_tool_use)
+```
+
+注意 `ProgressHook` 的两个方法都应该返回 `None`，不能短路后续 hook。
+
 ## 测试讲解
 
 运行：
@@ -165,13 +236,60 @@ python scripts/dev.py test --ch 06
 
 ## 验收任务
 
-运行 agent，并尝试一个会触发权限检查的操作：
+### 第一步：运行自动测试
+
+```bash
+python scripts/dev.py test --ch 06
+```
+
+期望输出：
+
+```text
+N passed in ...s
+```
+
+### 第二步：验证 ProgressHook 的实时输出
+
+启动 agent：
+
+```bash
+python scripts/dev.py run
+```
+
+输入一个会触发多个工具调用的任务：
+
+```text
+列出 examples/ 目录里有哪些文件，然后读取 examples/simple-bug/calculator.py 的内容
+```
+
+期望在最终回复出现之前，终端里能实时看到每个工具的进度，例如：
+
+```text
+  ⚙ bash  ls examples/
+    exit_code: 0
+    stdout:
+    buggy-python-project/
+    simple-bug/
+    … (2 more lines)
+  ⚙ read  examples/simple-bug/calculator.py
+    def add(a, b):
+        return a + b
+    … (3 more lines)
+
+examples/ 目录下有两个子目录：...
+```
+
+如果工具调用开始执行就能看到 `⚙` 那一行，说明 `PreToolUse` 正常工作；如果工具执行完立刻看到结果预览，说明 `PostToolUse` 正常工作。
+
+### 第三步：验证权限 hook 仍然有效
+
+输入：
 
 ```text
 读取 ../secret.txt
 ```
 
-行为应该和 ch05 一样，但内部结构更干净：agent loop 触发 `PreToolUse`，权限 hook 决定拒绝。
+期望 agent 拒绝执行，行为和 ch05 一致。但此时内部结构更干净：agent loop 只触发事件，权限逻辑在 hook 里独立运行。
 
 ## 常见错误
 
