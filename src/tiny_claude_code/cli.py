@@ -83,6 +83,8 @@ def main(argv: list[str] | None=None) -> None:
     tool_log = ToolLogHook()
     stop_log = StopLogHook()
     error_handler = ErrorHandler()
+    context_manager = ContextManager()
+    compact_manager = CompactManager()
     hooks.register("PreToolUse", permissions.as_hook, priority=100)
     hooks.register("PostToolUse", tool_log.post_tool_use)
     hooks.register("Stop", stop_log.stop)
@@ -100,7 +102,11 @@ def main(argv: list[str] | None=None) -> None:
         if user_input in ("/exit", "/quit"):
             print("Bye!")
             break
-        if user_input.startswith(("/compact", "/memory", "/skill")):
+        if user_input == "/compact":
+            messages[:] = compact_manager.compact(messages, client)
+            print(f"Compacted conversation to {len(messages)} messages.")
+            continue
+        if user_input.startswith(("/memory", "/skill")):
             print("This command is introduced in a later chapter.")
             continue
 
@@ -118,6 +124,8 @@ def main(argv: list[str] | None=None) -> None:
             system=system,
             hooks=hooks,
             error_handler=error_handler,
+            context_manager=context_manager,
+            compact_manager=compact_manager,
         )
         print(f"\n{response}\n")
 
