@@ -12,28 +12,34 @@ class HookSystem:
     """
 
     def __init__(self) -> None:
-        raise NotImplementedError('TODO: implement __init__')
+        self._callbacks: dict[str, list[tuple[int, HookCallback]]] = defaultdict(list)
 
     def register(self, event: str, callback: HookCallback, priority: int=0) -> None:
-        raise NotImplementedError('TODO: implement register')
+        callbacks = self._callbacks[event]
+        callbacks.append((priority, callback))
+        callbacks.sort(key=lambda item: item[0], reverse=True)
 
     def trigger(self, event: str, **kwargs: Any) -> Any:
-        raise NotImplementedError('TODO: implement trigger')
+        for _, callback in self._callbacks.get(event, []):
+            result = callback(**kwargs)
+            if result is not None:
+                return result
+        return None
 
 class ToolLogHook:
     """Small in-memory log hook useful for tests and examples."""
 
     def __init__(self) -> None:
-        raise NotImplementedError('TODO: implement __init__')
+        self.entries: list[dict[str, Any]] = []
 
     def post_tool_use(self, tool_name: str, tool_input: dict[str, Any], result: str, **_: Any) -> None:
-        raise NotImplementedError('TODO: implement post_tool_use')
+        self.entries.append({"tool": tool_name, "input": tool_input, "result": result})
 
 class StopLogHook:
     """Records final responses emitted by the agent loop."""
 
     def __init__(self) -> None:
-        raise NotImplementedError('TODO: implement __init__')
+        self.responses: list[str] = []
 
     def stop(self, response: str, **_: Any) -> None:
-        raise NotImplementedError('TODO: implement stop')
+        self.responses.append(response)

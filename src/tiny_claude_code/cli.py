@@ -79,6 +79,12 @@ def main(argv: list[str] | None=None) -> None:
     system = build_system_prompt(workspace)
     tool_handlers = create_default_registry(workspace)
     permissions = PermissionManager(workspace=workspace)
+    hooks = HookSystem()
+    tool_log = ToolLogHook()
+    stop_log = StopLogHook()
+    hooks.register("PreToolUse", permissions.as_hook, priority=100)
+    hooks.register("PostToolUse", tool_log.post_tool_use)
+    hooks.register("Stop", stop_log.stop)
 
     print("tiny-claude-code (type /exit to quit)")
     while True:
@@ -97,13 +103,19 @@ def main(argv: list[str] | None=None) -> None:
             print("This command is introduced in a later chapter.")
             continue
 
+        prompt_override = hooks.trigger(
+            "UserPromptSubmit", prompt=user_input, messages=messages
+        )
+        if prompt_override is not None:
+            user_input = str(prompt_override)
+
         messages.append({"role": "user", "content": user_input})
         response = agent_loop(
             messages,
             tool_handlers=tool_handlers,
             client=client,
             system=system,
-            permission_manager=permissions,
+            hooks=hooks,
         )
         print(f"\n{response}\n")
 
