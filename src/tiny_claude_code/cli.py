@@ -14,7 +14,7 @@ from tiny_claude_code.compact import CompactManager
 from tiny_claude_code.context import ContextManager
 from tiny_claude_code.cron import CronScheduler
 from tiny_claude_code.error_recovery import ErrorHandler
-from tiny_claude_code.hooks import HookSystem, StopLogHook, ToolLogHook
+from tiny_claude_code.hooks import HookSystem, ProgressHook, StopLogHook, ToolLogHook
 from tiny_claude_code.llm import LLMClient
 from tiny_claude_code.memory import MemoryManager
 from tiny_claude_code.permissions import PermissionManager
@@ -45,6 +45,7 @@ def main(argv: list[str] | None=None) -> None:
 
     ch01: implement basic REPL (read input -> call agent_loop -> print response)
     ch02: initialize tool_handlers and pass to agent_loop
+    ch06: create ProgressHook and register it on PreToolUse / PostToolUse
     ch09: add /compact command
     ch10: add --resume and /memory commands
     """
