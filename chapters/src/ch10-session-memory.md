@@ -167,22 +167,140 @@ python scripts/dev.py test --ch 10
 
 ## 验收任务
 
-启动 agent，添加记忆：
+### 第一步：运行自动测试
+
+```bash
+python scripts/dev.py test --ch 10
+```
+
+期望输出：
+
+```text
+7 passed in ...s
+```
+
+### 第二步：验证 Memory 持久化
+
+启动 agent：
+
+```bash
+python scripts/dev.py run
+```
+
+在提示符后依次输入：
 
 ```text
 /memory add "Testing" "This project runs chapter tests with python scripts/dev.py test --ch NN"
 ```
 
-退出后重新启动：
+期望输出包含：
+
+```text
+Saved memory: ...testing.md
+```
+
+接着查看索引：
+
+```text
+/memory list
+```
+
+期望输出包含：
+
+```text
+# Project Memory
+- [Testing](./...testing.md) - user
+```
+
+退出 agent：
+
+```text
+/exit
+```
+
+在终端验证文件已落盘：
+
+```bash
+ls .tiny-claude-code/memory/
+```
+
+期望能看到刚保存的 `.md` 文件。查看文件内容，确认 frontmatter 格式正确：
+
+```bash
+cat .tiny-claude-code/memory/*.md
+```
+
+期望输出类似：
+
+```text
+---
+category: user
+title: Testing
+created_at: 2024-...
+---
+
+This project runs chapter tests with python scripts/dev.py test --ch NN
+```
+
+### 第三步：验证 Session 保存
+
+重新启动 agent，和它对话一轮：
+
+```bash
+python scripts/dev.py run
+```
+
+输入任意问题：
+
+```text
+用一句话解释什么是 session
+```
+
+等 agent 回答后，用 `/exit` 正常退出：
+
+```text
+/exit
+```
+
+检查 session 文件是否存在：
+
+```bash
+ls .tiny-claude-code/sessions/
+```
+
+期望看到一个 `<timestamp>.json` 文件。查看内容，确认 messages 已保存：
+
+```bash
+cat .tiny-claude-code/sessions/*.json
+```
+
+期望看到包含 `"role": "user"` 和 `"role": "assistant"` 的 JSON 结构。
+
+### 第四步：验证 --resume 恢复会话
+
+用 `--resume` 重新启动，加载最新 session：
 
 ```bash
 python scripts/dev.py run -- --resume
 ```
 
-期望行为：
+询问 agent 记不记得上次说过的内容：
 
-- 上次会话可以恢复
-- system prompt 中包含项目记忆
+```text
+你刚才解释了什么概念？
+```
+
+期望 agent 能提及上一轮提到的 session 相关内容，说明对话历史已成功恢复。
+
+### 第五步：验证 Memory 注入 system prompt
+
+在同一个会话内，向 agent 询问项目测试方法：
+
+```text
+这个项目怎么跑测试？
+```
+
+期望 agent 回答中提到 `python scripts/dev.py test --ch NN`，说明第二步保存的记忆已通过 system prompt 注入给了模型。
 
 ## 常见错误
 
