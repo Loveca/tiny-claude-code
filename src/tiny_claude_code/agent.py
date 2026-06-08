@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from typing import Any
 MAX_TURNS = 50
 
-def agent_loop(messages: list[dict[str, Any]], tool_handlers: dict[str, Any] | None=None, client: Any=None, system: str | None=None, hooks: Any=None, error_handler: Any=None, context_manager: Any=None, compact_manager: Any=None, permission_manager: Any=None, max_turns: int=MAX_TURNS) -> str:
+def agent_loop(messages: list[dict[str, Any]], tool_handlers: dict[str, Any] | None=None, client: Any=None, system: str | None=None, hooks: Any=None, error_handler: Any=None, context_manager: Any=None, compact_manager: Any=None, max_turns: int=MAX_TURNS) -> str:
     """The core agent loop.
 
     Flow:
@@ -79,15 +79,13 @@ def agent_loop(messages: list[dict[str, Any]], tool_handlers: dict[str, Any] | N
                 )
                 continue
 
-            denial = _check_permission(permission_manager, tool_name, tool_input)
-            if denial is None:
-                denial = _trigger(
-                    hooks,
-                    "PreToolUse",
-                    tool_name=tool_name,
-                    tool_input=tool_input,
-                    block=block,
-                )
+            denial = _trigger(
+                hooks,
+                "PreToolUse",
+                tool_name=tool_name,
+                tool_input=tool_input,
+                block=block,
+            )
             if denial is not None:
                 output = str(denial)
             else:
@@ -154,11 +152,6 @@ def _chat(client: Any, messages: list[dict[str, Any]], tools: list[dict[str, Any
     if error_handler is not None:
         return error_handler.chat(client, messages, tools=tools, system=system)
     return client.chat(messages, tools=tools, system=system)
-
-def _check_permission(permission_manager: Any, tool_name: str, tool_input: dict[str, Any]) -> str | None:
-    if permission_manager is None:
-        return None
-    return permission_manager.check(tool_name, tool_input)
 
 def _trigger(hooks: Any, event: str, **kwargs: Any) -> Any:
     if hooks is None:
