@@ -20,6 +20,7 @@ from tiny_claude_code.memory import MemoryManager
 from tiny_claude_code.permissions import PermissionManager
 from tiny_claude_code.session import SessionManager
 from tiny_claude_code.skills import SkillLoader
+from tiny_claude_code.tools.shell import ShellTool
 from tiny_claude_code.tools import create_default_registry
 SYSTEM_PROMPT = "You are a coding agent working in {workspace}. Use the available tools to inspect files, edit code, and run commands. Act to solve the user's task, then summarize what changed."
 
@@ -77,6 +78,13 @@ def main(argv: list[str] | None=None) -> None:
     client = LLMClient()
     messages: list[dict] = []
     system = build_system_prompt(workspace)
+    shell = ShellTool(workspace=workspace)
+    tool_handlers = {
+        shell.name: {
+            "schema": shell.schema,
+            "handler": shell.execute,
+        }
+    }
 
     print("tiny-claude-code (type /exit to quit)")
     while True:
@@ -98,7 +106,7 @@ def main(argv: list[str] | None=None) -> None:
         messages.append({"role": "user", "content": user_input})
         response = agent_loop(
             messages,
-            tool_handlers=None,
+            tool_handlers=tool_handlers,
             client=client,
             system=system,
         )
