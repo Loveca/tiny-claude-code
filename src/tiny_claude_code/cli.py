@@ -82,6 +82,7 @@ def main(argv: list[str] | None=None) -> None:
     hooks = HookSystem()
     tool_log = ToolLogHook()
     stop_log = StopLogHook()
+    error_handler = ErrorHandler()
     hooks.register("PreToolUse", permissions.as_hook, priority=100)
     hooks.register("PostToolUse", tool_log.post_tool_use)
     hooks.register("Stop", stop_log.stop)
@@ -116,6 +117,7 @@ def main(argv: list[str] | None=None) -> None:
             client=client,
             system=system,
             hooks=hooks,
+            error_handler=error_handler,
         )
         print(f"\n{response}\n")
 
