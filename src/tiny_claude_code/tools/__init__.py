@@ -33,6 +33,9 @@ class ToolRegistry:
 
 def create_default_registry(workspace: str | Path | None=None, client: Any=None, task_manager: Any=None, background_manager: Any=None, cron_scheduler: Any=None, plugin_dir: str | Path | None=None) -> ToolRegistry:
     from tiny_claude_code.tasks import TaskManager, TodoWriteTool
+    from tiny_claude_code.subagent import SubAgentTool
+    from tiny_claude_code.background import BackgroundManager, BackgroundSubmitTool, BackgroundPollTool
+    from tiny_claude_code.cron import CronScheduler, CronScheduleTool
 
     registry = ToolRegistry()
     registry.register(ShellTool(workspace=workspace))
@@ -40,7 +43,14 @@ def create_default_registry(workspace: str | Path | None=None, client: Any=None,
     registry.register(WriteTool(workspace=workspace))
     registry.register(SearchTool(workspace=workspace))
     task_manager = task_manager or TaskManager(workspace=workspace)
+    background_manager = background_manager or BackgroundManager(workspace=workspace)
+    cron_scheduler = cron_scheduler or CronScheduler(workspace=workspace)
     registry.register(TodoWriteTool(task_manager))
+    registry.register(BackgroundSubmitTool(background_manager))
+    registry.register(BackgroundPollTool(background_manager))
+    registry.register(CronScheduleTool(cron_scheduler))
+    if client is not None:
+        registry.register(SubAgentTool(client=client, tools=registry))
     return registry
 __all__ = ['Tool', 'ToolRegistry', 'ShellTool', 'ReadTool', 'WriteTool', 'SearchTool', 'TaskManager', 'TodoWriteTool', 'SubAgentTool', 'BackgroundManager', 'BackgroundSubmitTool', 'BackgroundPollTool', 'CronScheduler', 'CronScheduleTool', 'PluginLoader', 'create_default_registry']
 
