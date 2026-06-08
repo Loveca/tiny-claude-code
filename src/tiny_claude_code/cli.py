@@ -6,6 +6,7 @@ ch10: you will add --resume flag and /memory command.
 """
 from __future__ import annotations
 import argparse
+import logging
 import shlex
 from pathlib import Path
 from tiny_claude_code.agent import agent_loop
@@ -67,7 +68,15 @@ def main(argv: list[str] | None=None) -> None:
         default=".tiny-claude-code/plugins",
         help="Directory containing Python tool plugins",
     )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable debug logging (shows subagent and tool dispatch details)",
+    )
     args = parser.parse_args(argv)
+
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG, format="  \033[2m[%(name)s]\033[0m %(message)s")
 
     if args.skill:
         print("--skill is introduced in ch15 and is not available in ch01.")
