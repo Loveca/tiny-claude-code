@@ -32,11 +32,15 @@ class ToolRegistry:
             return f"Error: tool '{name}' failed: {exc}"
 
 def create_default_registry(workspace: str | Path | None=None, client: Any=None, task_manager: Any=None, background_manager: Any=None, cron_scheduler: Any=None, plugin_dir: str | Path | None=None) -> ToolRegistry:
+    from tiny_claude_code.tasks import TaskManager, TodoWriteTool
+
     registry = ToolRegistry()
     registry.register(ShellTool(workspace=workspace))
     registry.register(ReadTool(workspace=workspace))
     registry.register(WriteTool(workspace=workspace))
     registry.register(SearchTool(workspace=workspace))
+    task_manager = task_manager or TaskManager(workspace=workspace)
+    registry.register(TodoWriteTool(task_manager))
     return registry
 __all__ = ['Tool', 'ToolRegistry', 'ShellTool', 'ReadTool', 'WriteTool', 'SearchTool', 'TaskManager', 'TodoWriteTool', 'SubAgentTool', 'BackgroundManager', 'BackgroundSubmitTool', 'BackgroundPollTool', 'CronScheduler', 'CronScheduleTool', 'PluginLoader', 'create_default_registry']
 
