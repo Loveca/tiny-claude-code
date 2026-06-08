@@ -9,8 +9,11 @@ ch07: you will wrap the LLM call with ErrorHandler.
 ch08: you will add context.compact() before each LLM call.
 """
 from __future__ import annotations
+import logging
 from collections.abc import Mapping
 from typing import Any
+
+logger = logging.getLogger(__name__)
 MAX_TURNS = 50
 
 def agent_loop(messages: list[dict[str, Any]], tool_handlers: dict[str, Any] | None=None, client: Any=None, system: str | None=None, hooks: Any=None, error_handler: Any=None, context_manager: Any=None, compact_manager: Any=None, max_turns: int=MAX_TURNS) -> str:
@@ -89,7 +92,9 @@ def agent_loop(messages: list[dict[str, Any]], tool_handlers: dict[str, Any] | N
             if denial is not None:
                 output = str(denial)
             else:
+                logger.debug("tool: %s  input: %s", tool_name, str(tool_input)[:120])
                 output = _dispatch_tool(tool_handlers, tool_name, tool_input)
+                logger.debug("result: %s", output[:200])
                 _trigger(
                     hooks,
                     "PostToolUse",

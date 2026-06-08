@@ -1,33 +1,79 @@
 """Subagent support for isolated delegated work."""
 from __future__ import annotations
+import logging
 from pathlib import Path
 from typing import Any
 from tiny_claude_code.agent import agent_loop
 from tiny_claude_code.tools.base import Tool
+
+logger = logging.getLogger(__name__)
+
 SUBAGENT_SYSTEM_PROMPT = 'You are a focused subagent. Complete the delegated task with the available tools, then return a concise summary for the parent agent.'
 
 class SubAgent:
     """Run a task in an isolated message history."""
 
     def __init__(self, client: Any, tools: Any=None, max_turns: int=30, depth: int=0) -> None:
-        raise NotImplementedError('TODO: implement __init__')
+        self.client = client
+        self.tools = tools
+        self.max_turns = max_turns
+        self.depth = depth
 
     def spawn(self, task_description: str) -> str:
-        raise NotImplementedError('TODO: implement spawn')
+        if self.depth >= 1:
+            return "Error: recursive subagents are not allowed"
+        logger.debug("spawning: %s", task_description[:80])
+        messages = [{"role": "user", "content": task_description}]
+        result = agent_loop(
+            messages,
+            tool_handlers=self._without_subagent_tool(),
+            client=self.client,
+            system=SUBAGENT_SYSTEM_PROMPT,
+            max_turns=self.max_turns,
+        )
+        logger.debug("done: %s", result[:120])
+        return result
 
     def _without_subagent_tool(self) -> Any:
-        raise NotImplementedError('TODO: implement _without_subagent_tool')
+        if not hasattr(self.tools, "_tools"):
+            return self.tools
+        from tiny_claude_code.tools import ToolRegistry
+
+        registry = ToolRegistry()
+        for name, tool in self.tools._tools.items():
+            if name != "SubAgent":
+                registry.register(tool)
+        return registry
+
 
 class SubAgentTool(Tool):
     """Expose SubAgent.spawn as a tool."""
     name = 'SubAgent'
 
     def __init__(self, client: Any, tools: Any=None, max_turns: int=30) -> None:
-        raise NotImplementedError('TODO: implement __init__')
+        self.client = client
+        self.tools = tools
+        self.max_turns = max_turns
 
     @property
     def schema(self) -> dict[str, Any]:
-        raise NotImplementedError('TODO: implement schema')
+        return {
+            "name": self.name,
+            "description": "Delegate a focused task to an isolated subagent.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "Task to delegate."}
+                },
+                "required": ["task"],
+            },
+        }
 
     def execute(self, task: str) -> str:
-        raise NotImplementedError('TODO: implement execute')
+        subagent = SubAgent(
+            client=self.client,
+            tools=self.tools,
+            max_turns=self.max_turns,
+            depth=0,
+        )
+        return subagent.spawn(task)

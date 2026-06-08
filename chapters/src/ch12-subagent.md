@@ -143,15 +143,77 @@ python scripts/dev.py test --ch 12
 - 子 agent 工具集中不再包含 subagent
 - 有 client 时默认注册表包含 subagent
 
+## 如何观测子 agent 的行为
+
+SubAgent 隔离了上下文，但这让调试变得困难——用户不知道子 agent 在内部跑了什么工具、看了哪些文件。
+
+本章在 `subagent.py` 和 `agent.py` 里加了 `logging.debug()` 调用，配合 CLI 的 `--verbose` flag 就能看到完整的内部链路：
+
+```bash
+python scripts/dev.py run -- --verbose
+```
+
+启用后，SubAgent 的每个工具调用都会打印出来：
+
+```text
+> 搜索项目中所有 TODO 注释并总结
+
+  ⚙ SubAgent  搜索项目中所有 TODO 注释并总结
+  [tiny_claude_code.subagent] spawning: 搜索项目中所有 TODO 注释并总结
+  [tiny_claude_code.agent] tool: bash  {'command': 'grep -rn "TODO" src/'}
+  [tiny_claude_code.agent] result: exit_code: 0\nstdout:\nsrc/tiny_claude_co...
+  [tiny_claude_code.agent] tool: bash  {'command': 'grep -rn "TODO" tests/'}
+  [tiny_claude_code.agent] result: exit_code: 0\nstdout:\ntests/test_ch01.py...
+  [tiny_claude_code.subagent] done: Found 23 TODO comments across 8 files...
+    Found 23 TODO comments across 8 files...
+
+项目中共有 23 处 TODO 注释，主要集中在...
+```
+
+`[tiny_claude_code.subagent] spawning` 和 `done` 是子 agent 的生命周期边界，中间所有 `[tiny_claude_code.agent] tool:` 都是子 agent 内部的工具调用。
+
+默认不开启 `--verbose`，正常使用时输出保持干净。
+
 ## 验收任务
 
-运行 agent：
+### 第一步：运行自动测试
+
+```bash
+python scripts/dev.py test --ch 12
+```
+
+期望输出：
+
+```text
+6 passed in ...s
+```
+
+### 第二步：用 --verbose 观测子 agent 行为
+
+```bash
+python scripts/dev.py run -- --verbose
+```
+
+输入：
 
 ```text
 搜索项目中所有 TODO 注释并总结它们分布在哪里
 ```
 
-理想行为：主 agent 派生子 agent 搜索，子 agent 返回汇总，主 agent 基于汇总回答。
+验证以下几点：
+
+1. 终端出现 `[tiny_claude_code.subagent] spawning:` 开头的日志——说明主 agent 确实派生了子 agent
+2. 中间出现多条 `[tiny_claude_code.agent] tool: bash` 日志——说明子 agent 在内部执行搜索
+3. 出现 `[tiny_claude_code.subagent] done:` ——说明子 agent 已返回摘要
+4. 最终回复包含具体的文件路径或数量——说明子 agent 的搜索结果被正确传回主 agent
+
+### 第三步：不用 --verbose 确认正常输出仍然干净
+
+```bash
+python scripts/dev.py run
+```
+
+再次输入同样的问题，确认没有 `[tiny_claude_code.*]` 日志出现，只有 `⚙ SubAgent` 的 ProgressHook 输出。
 
 ## 常见错误
 
