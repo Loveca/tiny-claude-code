@@ -1,33 +1,125 @@
 # tiny-claude-code
 
-Build your own coding agent, step by step.
+Build a Claude Code-style coding agent from scratch in 15 chapters.
 
-`tiny-claude-code` is a hands-on tutorial project for learning how a coding agent works from the inside: an LLM, a loop, tools, file access, safety, context, memory, tasks, and collaboration.
+`tiny-claude-code` is a hands-on tutorial for developers who want to understand how coding agents actually work: the agent loop, tool calling, shell commands, file access, permission checks, hooks, context compaction, memory, tasks, subagents, background jobs, and plugins.
 
-Current release: Part 5. The repository publishes the full ch01-ch15 curriculum plus checkpoint exercises. `src/tiny_claude_code/` is the student skeleton, and `src/tiny_claude_code_ref/` is the complete reference implementation.
+Unlike a black-box demo, this repository gives you both:
 
-## What You Get
+- `src/tiny_claude_code/`: a student skeleton with TODOs
+- `src/tiny_claude_code_ref/`: a complete reference implementation
 
-- A student skeleton for building a minimal CLI coding agent
-- TODO stubs for shell, file read/write, search, registry, safety, context, memory, tasks, and extensions
-- Mock-LLM chapter tests that run without an API key
-- A complete reference implementation for comparison and hands-on verification
-- A checkpoint project that lets the agent fix a real bug
-- Permission hooks and basic LLM error recovery
-- Context compaction, session resume, and project memory
-- Todo tracking, subagents, background tasks, and cron scheduling
-- Real challenge projects, skill loading, and Python tool plugins
-- Chapter-by-chapter教材 under [chapters/src/](./chapters/src)
+You can learn chapter by chapter, run focused tests without an API key, then compare your implementation against the reference agent.
 
-## Current Release
+## Preview
 
-What is released now:
+The core idea is small:
+
+```text
+messages -> LLM -> response -> tool_use -> tool_result -> messages
+```
+
+After implementing the early chapters, the agent can inspect a project through shell commands:
+
+```text
+> list the files in this repo and tell me what kind of project this is
+
+[tool_use: bash]
+command: dir
+
+[tool_result]
+exit_code: 0
+stdout:
+README.md
+src
+tests
+chapters
+
+This is a hands-on Python tutorial project for building a coding agent...
+```
+
+By the end, you will have a compact but complete agent framework with tools, safety boundaries, memory, task tracking, subagents, and extension points.
+
+## Why This Project
+
+Most agent tutorials stop at "call an LLM and print the answer." Real coding agents need more:
+
+- A persistent message loop, not a one-shot prompt
+- Tool schemas shown to the model and local handlers executed by the harness
+- Shell and file tools that return structured observations
+- Permission and hook layers around risky actions
+- Context budgeting and compaction
+- Session resume and project memory
+- Todo tracking, subagents, background work, cron jobs, skills, and plugins
+
+This project builds those pieces one at a time, with tests for each chapter.
+
+## Quick Start
+
+Clone and install:
+
+```bash
+git clone git@github.com:Loveca/tiny-claude-code.git
+cd tiny-claude-code
+pip install -r requirements.txt
+```
+
+Run chapter tests without an API key:
+
+```bash
+python scripts/dev.py test --ch 01
+python scripts/dev.py test --ch 02
+python scripts/dev.py test --all
+```
+
+Run the completed reference agent:
+
+```bash
+python scripts/dev.py run --ref
+```
+
+Run your own student implementation:
+
+```bash
+python scripts/dev.py run
+```
+
+The student implementation uses `src/tiny_claude_code/`, so it will only work after you implement the required TODOs.
+
+## Use a Real LLM
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Then set:
+
+```env
+ANTHROPIC_API_KEY=your-api-key
+MODEL_ID=claude-sonnet-4-6
+```
+
+Compatible providers can be configured with `ANTHROPIC_BASE_URL` if they support the Anthropic Messages API shape used by the Anthropic SDK.
+
+## Curriculum
+
+| Part | Chapters | What you build |
+|------|----------|----------------|
+| Part 1 | ch01-ch04 | Agent loop, shell tool, file tools, tool registry |
+| Checkpoint 1 | after ch04 | Use the agent to fix a small real bug |
+| Part 2 | ch05-ch07 | Permission checks, hooks, LLM error recovery |
+| Part 3 | ch08-ch10 | Context budget, `/compact`, sessions, memory |
+| Part 4 | ch11-ch13 | Todo system, subagents, background tasks, cron |
+| Part 5 | ch14-ch15 | Real project challenge, skills, plugins |
+
+Released chapters:
 
 - ch01: Agent loop and CLI
 - ch02: Shell tool
-- ch03: File tools
+- ch03: File read/write/search tools
 - ch04: Tool registry
-- Checkpoint 1: first bug-fix exercise
 - ch05: Permission system
 - ch06: Hook system
 - ch07: Error recovery
@@ -40,57 +132,29 @@ What is released now:
 - ch14: Real project challenge
 - ch15: Skills and plugin extension
 
-The student package intentionally contains `raise NotImplementedError` TODOs. The roadmap is implemented end to end in the reference package.
+Chapter material lives in [chapters/src/](./chapters/src).
 
-## Quick Start
+## Common Workflows
 
-```bash
-git clone git@github.com:Loveca/tiny-claude-code.git
-cd tiny-claude-code
-pip install -r requirements.txt
-cp .env.example .env
-```
-
-Set `ANTHROPIC_API_KEY` in `.env`, then choose a model in `MODEL_ID` if needed.
-
-## Run It
-
-### Chapter tests
+Run one chapter:
 
 ```bash
-python scripts/dev.py test --ch 01
-python scripts/dev.py test --ch 02
 python scripts/dev.py test --ch 03
-python scripts/dev.py test --ch 04
-python scripts/dev.py test --ch 05
-python scripts/dev.py test --ch 06
-python scripts/dev.py test --ch 07
-python scripts/dev.py test --ch 08
-python scripts/dev.py test --ch 09
-python scripts/dev.py test --ch 10
-python scripts/dev.py test --ch 11
-python scripts/dev.py test --ch 12
-python scripts/dev.py test --ch 13
-python scripts/dev.py test --ch 14
-python scripts/dev.py test --ch 15
-python scripts/dev.py test --all
 ```
 
-### Student agent
+Check remaining TODOs:
 
 ```bash
-python scripts/dev.py run
+python scripts/dev.py check
 ```
 
-This uses `src/tiny_claude_code/`, so it will only work after you implement the required TODOs.
-
-Resume the latest session:
+Compare your implementation with the reference:
 
 ```bash
-python scripts/dev.py run -- --resume
+diff src/tiny_claude_code/agent.py src/tiny_claude_code_ref/agent.py
 ```
 
-Inside the REPL:
+Try the REPL commands added in later chapters:
 
 ```text
 /compact
@@ -99,68 +163,15 @@ Inside the REPL:
 /skill list
 ```
 
-### Reference implementation
-
-```bash
-python scripts/dev.py run --ref
-```
-
-Use this when you want to see the completed agent behavior before or after doing the exercises.
-
-### Check remaining TODOs
-
-```bash
-python scripts/dev.py check
-```
-
-## Learning Path
-
-| Part | Chapters | What you build |
-|------|----------|----------------|
-| Part 1 | ch01-04 | Agent loop, shell, file tools, registry |
-| Checkpoint 1 |  | Fix your first bug with the agent |
-| Part 2 | ch05-07 | Permission, hooks, error recovery |
-| Part 3 | ch08-10 | Context budget, `/compact`, session and memory |
-| Checkpoint 2 |  | Long conversation and session resume |
-| Part 4 | ch11-13 | Todo/task, subagent, background and cron |
-| Part 5 | ch14-15 | Real project challenge, skills and plugins |
-
-## Workflow
-
-```bash
-# Read the chapter
-cat chapters/src/ch01-agent-loop.md
-
-# Implement the TODOs, or compare with the reference
-diff src/tiny_claude_code/agent.py src/tiny_claude_code_ref/agent.py
-
-# Run released tests
-python scripts/dev.py test --ch 01
-
-# Run the actual agent
-python scripts/dev.py run
-```
-
-## Checkpoint 1
-
-Checkpoint 1 is intentionally small and practical:
-
-- Run tests in `examples/simple-bug/`
-- Read the failure
-- Fix the off-by-one bug
-- Re-run the tests until they pass
-
-The checkpoint project is deliberately failing at first and is not part of the default `pytest` run. The released test suite lives under `tests/`.
-
 ## Repository Layout
 
 ```text
 tiny-claude-code/
   src/
     tiny_claude_code/       # student skeleton with TODOs
-    tiny_claude_code_ref/   # reference implementation
-  chapters/src/             # tutorial chapters
-  examples/simple-bug/      # checkpoint exercise
+    tiny_claude_code_ref/   # complete reference implementation
+  chapters/src/             # chapter-by-chapter tutorial material
+  examples/simple-bug/      # first checkpoint exercise
   examples/buggy-python-project/
   examples/tiny-web-app/
   examples/plugins/
@@ -172,10 +183,11 @@ tiny-claude-code/
 
 ## Notes
 
-- `python -m pytest` runs the released `tests/` suite by default. It is expected to fail until the corresponding TODOs are implemented.
-- `examples/simple-bug/`, `examples/buggy-python-project/`, and `examples/tiny-web-app/` are meant to fail until the agent fixes them.
+- `python -m pytest` runs the released `tests/` suite by default.
+- The student package intentionally contains TODO stubs.
+- Mock LLM tests do not require an API key.
+- `examples/simple-bug/`, `examples/buggy-python-project/`, and `examples/tiny-web-app/` are designed as agent practice projects.
 - Runtime session and memory files are stored under `.tiny-claude-code/`.
-- The full roadmap is implemented in `tiny_claude_code_ref/`, while `tiny_claude_code/` remains the exercise workspace.
 
 ## License
 
