@@ -35,8 +35,32 @@ class CompactManager:
 
     def compact(self, messages: list[dict[str, Any]], client: Any) -> list[dict[str, Any]]:
         summary = self.summarize(messages, client)
-        recent = messages[-self.keep_recent:] if self.keep_recent else []
+        recent = list(messages[-self.keep_recent:]) if self.keep_recent else []
+        # Drop leading user messages that contain tool_result — their corresponding
+        # tool_use blocks are no longer present after compaction, which causes a 400.
+        while recent and self._has_tool_result(recent[0]):
+            recent = recent[1:]
+        # Drop trailing assistant messages that end with tool_use but have no
+        # following tool_result message in the slice.
+        while recent and self._ends_with_tool_use(recent[-1]):
+            recent = recent[:-1]
         return self.build_compact_messages(summary, recent)
+
+    def _has_tool_result(self, message: dict[str, Any]) -> bool:
+        content = message.get("content")
+        if not isinstance(content, list):
+            return False
+        return any(
+            isinstance(b, dict) and b.get("type") == "tool_result" for b in content
+        )
+
+    def _ends_with_tool_use(self, message: dict[str, Any]) -> bool:
+        content = message.get("content")
+        if not isinstance(content, list):
+            return False
+        return any(
+            isinstance(b, dict) and b.get("type") == "tool_use" for b in content
+        )
 
     def _format_transcript(self, messages: list[dict[str, Any]]) -> str:
         parts = []
