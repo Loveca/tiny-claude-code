@@ -12,6 +12,7 @@
 - [ch08: Context Budget](./ch08-context-budget.md)
 - [ch09: Compact](./ch09-compact.md)
 - [ch10: Session and Memory](./ch10-session-memory.md)
+- [Checkpoint 2: 长对话与会话恢复](./checkpoint-2-long-conversation.md)
 - [ch11: Todo and Task System](./ch11-todo-task.md)
 - [ch12: Subagent](./ch12-subagent.md)
 - [ch13: Background and Cron](./ch13-background-cron.md)
