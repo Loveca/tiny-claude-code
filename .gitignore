@@ -1,9 +1,40 @@
+# ===== Python =====
 __pycache__/
-*.pyc
-*.pyo
-.env
-.pytest_cache/
+*.py[cod]
 *.egg-info/
+*.egg
 dist/
 build/
+.eggs/
+*.so
+
+# ===== Virtual environments =====
+venv/
+.venv/
+env/
+
+# ===== Testing & Coverage =====
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ===== Environment & Secrets =====
+.env
+
+# ===== Project-specific runtime data =====
 .tiny-claude-code/
+
+# ===== IDE / Editor =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== OS junk =====
+.DS_Store
+Thumbs.db
+
+# ===== Logs =====
+*.log
