@@ -5,4 +5,4 @@ language = "zh-CN"
 src = "chapters/src"
 
 [output.html]
-git-repository-url = "https://github.com/xxx/tiny-claude-code"
+git-repository-url = "https://github.com/Loveca/tiny-claude-code"

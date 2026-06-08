@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>tiny-claude-code - Build a Claude Code-style coding agent</title>
+  <meta name="description" content="A 15-chapter Python tutorial for building a Claude Code-style AI coding agent with tool calling, shell access, file tools, memory, hooks, subagents, and plugins.">
+  <meta name="keywords" content="coding agent, Claude Code, AI agent, LLM tool calling, Python agent tutorial, developer tools">
+  <link rel="canonical" href="https://loveca.github.io/tiny-claude-code/">
+  <meta property="og:title" content="tiny-claude-code">
+  <meta property="og:description" content="Build a Claude Code-style coding agent from scratch in 15 chapters.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="assets/demo.gif">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #5b6475;
+      --line: #d9dee8;
+      --panel: #f6f8fb;
+      --accent: #1f6feb;
+      --accent-dark: #0f4fb8;
+      --green: #1f8f5f;
+      --orange: #b45309;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #ffffff;
+      line-height: 1.55;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: #ffffff;
+    }
+
+    nav {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    nav strong {
+      font-size: 16px;
+    }
+
+    nav div {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      font-size: 14px;
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 56px 24px 72px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 520px);
+      gap: 40px;
+      align-items: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 52px;
+      line-height: 1.05;
+      letter-spacing: 0;
+      max-width: 720px;
+    }
+
+    .lead {
+      margin: 22px 0 0;
+      font-size: 19px;
+      color: var(--muted);
+      max-width: 690px;
+    }
+
+    .actions {
+      margin-top: 28px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      min-height: 42px;
+      padding: 9px 15px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-weight: 650;
+      color: var(--ink);
+      background: #ffffff;
+    }
+
+    .button.primary {
+      color: #ffffff;
+      background: var(--accent);
+      border-color: var(--accent-dark);
+    }
+
+    .demo {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      display: block;
+    }
+
+    section {
+      margin-top: 64px;
+    }
+
+    h2 {
+      margin: 0 0 18px;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      background: #ffffff;
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 17px;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .chapters {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .chapter {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 14px;
+      background: #ffffff;
+    }
+
+    .chapter strong {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--accent-dark);
+    }
+
+    pre {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      background: #101826;
+      color: #dbe7ff;
+      font-size: 14px;
+    }
+
+    footer {
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      padding: 24px;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    @media (max-width: 860px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 38px;
+      }
+
+      .grid,
+      .chapters {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <nav>
+      <strong>tiny-claude-code</strong>
+      <div>
+        <a href="https://github.com/Loveca/tiny-claude-code">GitHub</a>
+        <a href="https://github.com/Loveca/tiny-claude-code#quick-start">Quick Start</a>
+        <a href="https://github.com/Loveca/tiny-claude-code/tree/master/chapters/src">Chapters</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <div class="hero">
+      <div>
+        <h1>Build a Claude Code-style coding agent from scratch.</h1>
+        <p class="lead">A 15-chapter Python tutorial for learning the agent loop, tool calling, shell access, file tools, permissions, hooks, memory, subagents, background jobs, and plugins.</p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/Loveca/tiny-claude-code">View on GitHub</a>
+          <a class="button" href="https://github.com/Loveca/tiny-claude-code#quick-start">Start learning</a>
+        </div>
+      </div>
+      <img class="demo" src="assets/demo.gif" alt="Terminal demo of tiny-claude-code running chapter tests and a reference agent">
+    </div>
+
+    <section>
+      <h2>What you will learn</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Agent loop</h3>
+          <p>Turn messages, model responses, tool calls, and observations into a persistent coding agent harness.</p>
+        </div>
+        <div class="card">
+          <h3>Tool calling</h3>
+          <p>Expose shell and file tools through schemas while keeping local execution in Python handlers.</p>
+        </div>
+        <div class="card">
+          <h3>Runtime systems</h3>
+          <p>Add permissions, hooks, context compaction, sessions, memory, todos, subagents, and plugins.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Quick start</h2>
+      <pre><code>git clone git@github.com:Loveca/tiny-claude-code.git
+cd tiny-claude-code
+pip install -r requirements.txt
+python scripts/dev.py test --ch 01
+python scripts/dev.py run --ref</code></pre>
+    </section>
+
+    <section>
+      <h2>Curriculum</h2>
+      <div class="chapters">
+        <div class="chapter"><strong>ch01</strong>Agent loop and CLI</div>
+        <div class="chapter"><strong>ch02</strong>Shell tool</div>
+        <div class="chapter"><strong>ch03</strong>File tools</div>
+        <div class="chapter"><strong>ch04</strong>Tool registry</div>
+        <div class="chapter"><strong>ch05</strong>Permissions</div>
+        <div class="chapter"><strong>ch06</strong>Hooks</div>
+        <div class="chapter"><strong>ch07</strong>Error recovery</div>
+        <div class="chapter"><strong>ch08</strong>Context budget</div>
+        <div class="chapter"><strong>ch09</strong>Compact</div>
+        <div class="chapter"><strong>ch10</strong>Session and memory</div>
+        <div class="chapter"><strong>ch11</strong>Todos and tasks</div>
+        <div class="chapter"><strong>ch12</strong>Subagents</div>
+        <div class="chapter"><strong>ch13</strong>Background and cron</div>
+        <div class="chapter"><strong>ch14</strong>Real project challenge</div>
+        <div class="chapter"><strong>ch15</strong>Skills and plugins</div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    MIT licensed. Built for developers learning how AI coding agents work under the hood.
+  </footer>
+</body>
+</html>

@@ -4,6 +4,10 @@ Build a Claude Code-style coding agent from scratch in 15 chapters.
 
 `tiny-claude-code` is a Python AI coding agent tutorial for developers who want to understand how tools like Claude Code, Codex, Cursor, and other LLM coding assistants work under the hood: the agent loop, tool calling, shell commands, file access, permission checks, hooks, context compaction, memory, tasks, subagents, background jobs, and plugins.
 
+[Documentation site](https://loveca.github.io/tiny-claude-code/) | [Quick Start](#quick-start) | [Curriculum](#curriculum)
+
+![tiny-claude-code terminal demo](./docs/assets/demo.gif)
+
 Unlike a black-box demo, this repository gives you both:
 
 - `src/tiny_claude_code/`: a student skeleton with TODOs
