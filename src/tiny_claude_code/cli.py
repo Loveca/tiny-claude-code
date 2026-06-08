@@ -78,6 +78,7 @@ def main(argv: list[str] | None=None) -> None:
     messages: list[dict] = []
     system = build_system_prompt(workspace)
     tool_handlers = create_default_registry(workspace)
+    permissions = PermissionManager(workspace=workspace)
 
     print("tiny-claude-code (type /exit to quit)")
     while True:
@@ -102,6 +103,7 @@ def main(argv: list[str] | None=None) -> None:
             tool_handlers=tool_handlers,
             client=client,
             system=system,
+            permission_manager=permissions,
         )
         print(f"\n{response}\n")
 
