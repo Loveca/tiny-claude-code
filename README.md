@@ -121,6 +121,18 @@ MODEL_ID=claude-sonnet-4-6
 
 Compatible providers can be configured with `ANTHROPIC_BASE_URL` if they support the Anthropic Messages API shape used by the Anthropic SDK.
 
+For DeepSeek:
+
+```env
+ANTHROPIC_API_KEY=your-deepseek-key
+MODEL_ID=deepseek-v4-flash
+# or:
+# MODEL_ID=deepseek-v4-pro
+
+# Optional: use a compatible provider (MiniMax, GLM, Kimi, DeepSeek)
+ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
+```
+
 ## Curriculum
 
 | Part | Chapters | What you build |
