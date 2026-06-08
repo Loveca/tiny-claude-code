@@ -78,13 +78,11 @@ def main(argv: list[str] | None=None) -> None:
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG, format="  \033[2m[%(name)s]\033[0m %(message)s")
 
-    if args.skill:
-        print("--skill is introduced in ch15 and is not available in ch01.")
-
     workspace = Path.cwd()
     client = LLMClient()
     sessions = SessionManager(workspace)
     memory = MemoryManager(workspace)
+    skills = SkillLoader(workspace)
     if args.resume:
         session_id = (
             sessions.latest_session_id() if args.resume == "latest" else args.resume
@@ -95,8 +93,14 @@ def main(argv: list[str] | None=None) -> None:
         session_id = sessions.new_session_id()
         messages: list[dict] = []
 
-    tool_handlers = create_default_registry(workspace)
-    system = build_system_prompt(workspace, memory.build_system_context())
+    tool_handlers = create_default_registry(
+        workspace, client=client, plugin_dir=workspace / args.plugins
+    )
+    system = build_system_prompt(
+        workspace,
+        memory.build_system_context(),
+        skills.build_system_context(args.skill),
+    )
     permissions = PermissionManager(workspace=workspace)
     hooks = HookSystem()
     tool_log = ToolLogHook()
@@ -132,10 +136,14 @@ def main(argv: list[str] | None=None) -> None:
             continue
         if user_input.startswith("/memory"):
             print(handle_memory_command(memory, user_input))
-            system = build_system_prompt(workspace, memory.build_system_context())
+            system = build_system_prompt(
+                workspace,
+                memory.build_system_context(),
+                skills.build_system_context(args.skill),
+            )
             continue
         if user_input.startswith("/skill"):
-            print("This command is introduced in a later chapter.")
+            print(handle_skill_command(skills, user_input))
             continue
 
         prompt_override = hooks.trigger(

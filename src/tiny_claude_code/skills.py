@@ -13,16 +13,40 @@ class SkillLoader:
     """Discover and load local SKILL.md files."""
 
     def __init__(self, workspace: str | Path | None=None) -> None:
-        raise NotImplementedError('TODO: implement __init__')
+        self.workspace = Path(workspace or Path.cwd())
+        self.skills_dir = self.workspace / ".tiny-claude-code" / "skills"
 
     def list_skills(self) -> list[SkillInfo]:
-        raise NotImplementedError('TODO: implement list_skills')
+        if not self.skills_dir.exists():
+            return []
+        skills = []
+        for path in sorted(self.skills_dir.glob("*/SKILL.md")):
+            text = path.read_text(encoding="utf-8")
+            skills.append(SkillInfo(
+                name=path.parent.name,
+                path=str(path),
+                summary=self._summary(text),
+            ))
+        return skills
 
     def load(self, skill_name: str) -> str:
-        raise NotImplementedError('TODO: implement load')
+        path = self.skills_dir / skill_name / "SKILL.md"
+        if not path.exists():
+            raise FileNotFoundError(f"skill not found: {skill_name}")
+        return path.read_text(encoding="utf-8")
 
     def build_system_context(self, skill_names: list[str] | None=None) -> str:
-        raise NotImplementedError('TODO: implement build_system_context')
+        if skill_names:
+            sections = [self.load(name) for name in skill_names]
+        else:
+            sections = [f"{skill.name}: {skill.summary}" for skill in self.list_skills()]
+        if not sections:
+            return ""
+        return "Available skills:\n\n" + "\n\n".join(sections)
 
     def _summary(self, text: str, max_chars: int=400) -> str:
-        raise NotImplementedError('TODO: implement _summary')
+        lines = [line.strip("# ").strip() for line in text.splitlines() if line.strip()]
+        summary = " ".join(lines)
+        if len(summary) <= max_chars:
+            return summary
+        return summary[:max_chars].rstrip() + "..."
