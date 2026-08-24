@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "tiny-claude-code"
@@ -19,7 +19,8 @@ dev = [
 ]
 
 [project.scripts]
-tiny-claude-code = "tiny_claude_code.cli:main"
+tiny-claude = "tiny_claude_code.cli:main"
+tiny-claude-ref = "tiny_claude_code_ref.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

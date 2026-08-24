@@ -73,7 +73,7 @@ def cmd_run(args):
 
     subprocess.run(
         [sys.executable, module_path, *agent_args],
-        cwd=PROJECT_ROOT,
+        cwd=os.getcwd(),
         env=env,
     )
 
