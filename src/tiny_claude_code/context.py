@@ -21,14 +21,21 @@ class ContextManager:
         return max(1, chars // 4) if chars else 0
 
     def trim_tool_output(self, messages: list[dict[str, Any]], max_chars: int | None=None) -> list[dict[str, Any]]:
-        """Return a copy with long tool_result content truncated."""
+        """Return a list with long tool_result content truncated.
+
+        Copy-on-write: messages that don't need trimming are reused by
+        reference, so a large history isn't deep-copied wholesale just to
+        shorten a couple of oversized tool results.
+        """
         limit = max_chars or self.max_tool_chars
-        trimmed = deepcopy(messages)
-        for message in trimmed:
+        trimmed: list[dict[str, Any]] = []
+        for message in messages:
             content = message.get("content")
-            if not isinstance(content, list):
+            if not isinstance(content, list) or not self._needs_trim(content, limit):
+                trimmed.append(message)
                 continue
-            for block in content:
+            message = deepcopy(message)
+            for block in message["content"]:
                 if not isinstance(block, dict) or block.get("type") != "tool_result":
                     continue
                 text = str(block.get("content", ""))
@@ -37,7 +44,16 @@ class ContextManager:
                         text[:limit]
                         + f"\n[truncated {len(text) - limit} chars by context budget]"
                     )
+            trimmed.append(message)
         return trimmed
+
+    @staticmethod
+    def _needs_trim(content: list[Any], limit: int) -> bool:
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                if len(str(block.get("content", ""))) > limit:
+                    return True
+        return False
 
     def snip_old_messages(self, messages: list[dict[str, Any]], keep_head: int | None=None, keep_tail: int | None=None) -> list[dict[str, Any]]:
         """Return a copy that preserves the beginning and end of the history."""
@@ -48,6 +64,14 @@ class ContextManager:
 
         head = deepcopy(messages[:head_count])
         tail = deepcopy(messages[-tail_count:]) if tail_count else []
+        # Keep tool_use / tool_result pairs intact across the snip boundary,
+        # otherwise the API rejects the request with a 400:
+        # - head must not end with an assistant tool_use whose result is snipped
+        while head and self._ends_with_tool_use(head[-1]):
+            head = head[:-1]
+        # - tail must not begin with a tool_result whose tool_use is snipped
+        while tail and self._has_tool_result(tail[0]):
+            tail = tail[1:]
         omitted = len(messages) - len(head) - len(tail)
         marker = {
             "role": "user",
@@ -73,6 +97,24 @@ class ContextManager:
 
         messages[:] = reduced
         return messages
+
+    @staticmethod
+    def _block_type(block: Any) -> str | None:
+        if isinstance(block, dict):
+            return block.get("type")
+        return getattr(block, "type", None)
+
+    def _has_tool_result(self, message: dict[str, Any]) -> bool:
+        content = message.get("content")
+        if not isinstance(content, list):
+            return False
+        return any(self._block_type(b) == "tool_result" for b in content)
+
+    def _ends_with_tool_use(self, message: dict[str, Any]) -> bool:
+        content = message.get("content")
+        if not isinstance(content, list):
+            return False
+        return any(self._block_type(b) == "tool_use" for b in content)
 
     def _content_to_text(self, content: Any) -> str:
         if content is None:
