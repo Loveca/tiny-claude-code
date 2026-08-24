@@ -22,12 +22,12 @@ class LLMClient:
 
         Read from environment variables:
         - ANTHROPIC_API_KEY: API key
-        - MODEL_ID: model ID (default: claude-sonnet-4-6)
+        - MODEL_ID: model ID (default: claude-sonnet-5)
         - ANTHROPIC_BASE_URL: optional, for compatible API providers
         """
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         base_url = os.environ.get("ANTHROPIC_BASE_URL")
-        self.model = os.environ.get("MODEL_ID", "claude-sonnet-4-6")
+        self.model = os.environ.get("MODEL_ID", "claude-sonnet-5")
 
         kwargs: dict[str, Any] = {"api_key": api_key}
         if base_url:
