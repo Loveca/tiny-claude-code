@@ -5,6 +5,7 @@ ch09: you will add /compact command handling.
 ch10: you will add --resume flag and /memory command.
 """
 from __future__ import annotations
+import sys
 import argparse
 import logging
 import shlex
@@ -32,6 +33,22 @@ def build_system_prompt(workspace: Path, memory_context: str='', skill_context: 
         system += "\n\n" + skill_context
     return system
 
+
+def _force_utf8_console() -> None:
+    """Make stdout/stderr UTF-8 so em dashes and CJK paths survive.
+
+    Windows consoles default to a legacy codepage (GBK here), which turns
+    "—" into "??" and mangles non-ASCII workspace paths.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 def main(argv: list[str] | None=None) -> None:
     """REPL main loop.
 
@@ -50,7 +67,14 @@ def main(argv: list[str] | None=None) -> None:
     ch09: add /compact command
     ch10: add --resume and /memory commands
     """
-    parser = argparse.ArgumentParser(description="tiny-claude-code")
+    _force_utf8_console()
+    parser = argparse.ArgumentParser(description="tiny-claude-code — AI coding agent")
+    parser.add_argument(
+        "--workspace", "-w",
+        type=Path,
+        default=Path.cwd(),
+        help="Target workspace directory (default: current directory)",
+    )
     parser.add_argument(
         "--resume",
         nargs="?",
@@ -73,12 +97,17 @@ def main(argv: list[str] | None=None) -> None:
         action="store_true",
         help="Enable debug logging (shows subagent and tool dispatch details)",
     )
+    parser.add_argument(
+        "task",
+        nargs="*",
+        help="Optional task to execute directly (non-interactive mode)",
+    )
     args = parser.parse_args(argv)
 
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG, format="  \033[2m[%(name)s]\033[0m %(message)s")
 
-    workspace = Path.cwd()
+    workspace = Path(args.workspace).resolve()
     client = LLMClient()
     sessions = SessionManager(workspace)
     memory = MemoryManager(workspace)
@@ -115,7 +144,26 @@ def main(argv: list[str] | None=None) -> None:
     hooks.register("PostToolUse", tool_log.post_tool_use)
     hooks.register("Stop", stop_log.stop)
 
-    print("tiny-claude-code (type /exit to quit)")
+    if args.task:
+        # 非交互模式：执行一次性任务后退出
+        task_str = " ".join(args.task)
+        messages.append({"role": "user", "content": task_str})
+        response = agent_loop(
+            messages,
+            tool_handlers=tool_handlers,
+            client=client,
+            system=system,
+            hooks=hooks,
+            error_handler=error_handler,
+            context_manager=context_manager,
+            compact_manager=compact_manager,
+        )
+        sessions.save(session_id, messages, {"workspace": str(workspace)})
+        print(response)
+        return
+
+    print(f"tiny-claude-code — working in {workspace}")
+    print("Type /exit to quit, or pass a task directly: tiny-claude \"your task\"")
     while True:
         try:
             user_input = input("> ").strip()
