@@ -6,7 +6,7 @@
 
 `tiny-claude-code` 是一个面向开发者的 Python AI Coding Agent 教程。它会带你拆开 Claude Code、Codex、Cursor 这类 LLM 编程助手背后的核心机制：agent loop、tool calling、shell 工具、文件读写、权限控制、hooks、上下文压缩、记忆、任务系统、subagent、后台任务和插件扩展。
 
-[文档站](https://loveca.github.io/tiny-claude-code/) | [快速开始](#快速开始) | [课程路线](#课程路线)
+[快速开始](#快速开始) | [课程路线](#课程路线) | [路线图](./docs/ROADMAP.md)
 
 ![tiny-claude-code terminal demo](./docs/assets/demo.gif)
 

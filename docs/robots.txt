@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://loveca.github.io/tiny-claude-code/sitemap.xml
