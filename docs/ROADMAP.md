@@ -1,5 +1,26 @@
 # tiny-claude-code 课程大纲 v2
 
+## 当前状态（2026-11）
+
+- ch01-ch15 全部发布：教材在 `chapters/src/`，参考实现在 `src/tiny_claude_code_ref/`，学生骨架在 `src/tiny_claude_code/`
+- 骨架与参考实现物理分离；每章都有对应的 mock LLM 测试，不需要 API key
+- 五个 Part 与两个 Checkpoint 的节奏与下文大纲一致
+- `python scripts/dev.py check` 用于确认骨架里还剩哪些 TODO
+
+## 后续可选方向
+
+以下方向都不影响教程的完整性，按「动机 / 代价」列出，供后续迭代取舍：
+
+| 方向 | 动机 | 代价 |
+|------|------|------|
+| 流式输出 | REPL 长回答不必等整段生成完，体验更接近真实产品 | 需要重写 CLI 渲染与 mock client 的事件模型 |
+| OpenAI 兼容适配层 | 让只提供 chat completions 的模型也能接入 | 在 `llm.py` 增加一层消息格式转换，测试面扩大 |
+| MCP 客户端支持 | 复用社区现成的工具生态，比手写插件更通用 | 引入协议层与进程管理，教学复杂度明显上升 |
+| 更强的 bash 沙箱 | 当前只有命令黑名单，教学定位下够用但不防误操作 | 需要 allowlist / 容器级隔离，偏离「读懂实现」的主线 |
+| 真实 tokenizer | 当前按字符数 / 4 估算，长上下文下误差不小 | 引入 tiktoken 类依赖，收益主要在工程化而非教学 |
+
+明确不做的方向：Web UI、多用户服务端、向量检索记忆。它们会把项目从「小型 agent 框架教材」推向应用开发，和当前定位冲突。
+
 ## 设计原则
 
 1. **骨架代码 + 参考实现物理分离**（`tiny_claude_code/` vs `tiny_claude_code_ref/`），不用 git 分支
