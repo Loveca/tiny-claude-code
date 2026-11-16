@@ -4,6 +4,7 @@
 Usage:
     python scripts/dev.py test --ch 01     Run tests for chapter 01
     python scripts/dev.py test --all       Run all tests
+    python scripts/dev.py test --all --ref Run all tests against the reference implementation
     python scripts/dev.py run              Run your agent (real LLM)
     python scripts/dev.py run --ref        Run reference implementation
     python scripts/dev.py check            Check remaining TODOs
@@ -23,6 +24,10 @@ SRC_DIR = os.path.join(PROJECT_ROOT, "src")
 
 def cmd_test(args):
     """Run tests for a specific chapter or all chapters."""
+    env = os.environ.copy()
+    if args.ref:
+        env["TINY_CLAUDE_CODE_TEST_TARGET"] = "ref"
+
     if args.all:
         # Copy all test files
         for f in os.listdir(TESTS_ALL_DIR):
@@ -31,6 +36,7 @@ def cmd_test(args):
         subprocess.run(
             [sys.executable, "-m", "pytest", TESTS_DIR, "-v"],
             cwd=PROJECT_ROOT,
+            env=env,
         )
         return
 
@@ -54,6 +60,7 @@ def cmd_test(args):
     subprocess.run(
         [sys.executable, "-m", "pytest", dst_path, "-v"],
         cwd=PROJECT_ROOT,
+        env=env,
     )
 
 
@@ -109,6 +116,11 @@ def main():
     test_parser = sub.add_parser("test", help="Run tests")
     test_parser.add_argument("--ch", type=str, help="Chapter number (e.g. 01)")
     test_parser.add_argument("--all", action="store_true", help="Run all tests")
+    test_parser.add_argument(
+        "--ref",
+        action="store_true",
+        help="Run tests against the reference implementation",
+    )
 
     # run
     run_parser = sub.add_parser("run", help="Run the agent")

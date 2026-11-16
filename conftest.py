@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import importlib
+import os
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import pytest
+
+
+if os.environ.get("TINY_CLAUDE_CODE_TEST_TARGET") == "ref":
+    # Run the chapter tests against the reference implementation.
+    sys.path.insert(0, str(Path(__file__).parent / "src"))
+    sys.modules["tiny_claude_code"] = importlib.import_module("tiny_claude_code_ref")
 
 
 @dataclass

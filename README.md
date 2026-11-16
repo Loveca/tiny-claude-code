@@ -178,6 +178,12 @@ Run one chapter:
 python scripts/dev.py test --ch 03
 ```
 
+Run every chapter test against the reference implementation:
+
+```bash
+python scripts/dev.py test --all --ref
+```
+
 Check remaining TODOs:
 
 ```bash
