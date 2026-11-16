@@ -33,7 +33,7 @@ class ContextManager:
     def trim_tool_output(
         self, messages: list[dict[str, Any]], max_chars: int | None = None
     ) -> list[dict[str, Any]]:
-        """Return a copy with long tool_result content truncated."""
+        """Return a copy with long tool_result content truncated head and tail."""
         limit = max_chars or self.max_tool_chars
         trimmed = deepcopy(messages)
         for message in trimmed:
@@ -45,9 +45,13 @@ class ContextManager:
                     continue
                 text = str(block.get("content", ""))
                 if len(text) > limit:
+                    head = text[: limit // 2]
+                    tail = text[-(limit - limit // 2) :]
+                    removed = len(text) - len(head) - len(tail)
                     block["content"] = (
-                        text[:limit]
-                        + f"\n[truncated {len(text) - limit} chars by context budget]"
+                        f"{head}\n"
+                        f"[... {removed} chars truncated by context budget ...]\n"
+                        f"{tail}"
                     )
         return trimmed
 

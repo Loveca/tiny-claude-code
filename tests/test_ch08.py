@@ -14,23 +14,23 @@ def test_estimate_tokens_tracks_character_count() -> None:
     assert manager.estimate_tokens(messages) == 10
 
 
-def test_trim_tool_output_adds_truncation_marker() -> None:
+def test_trim_tool_output_keeps_head_and_tail() -> None:
     manager = ContextManager(max_tool_chars=10)
+    original = "head" + "x" * 42 + "tail"
     messages = [
         {
             "role": "user",
-            "content": [
-                {"type": "tool_result", "tool_use_id": "1", "content": "x" * 50}
-            ],
+            "content": [{"type": "tool_result", "tool_use_id": "1", "content": original}],
         }
     ]
 
     trimmed = manager.trim_tool_output(messages)
 
     content = trimmed[0]["content"][0]["content"]
-    assert content.startswith("x" * 10)
-    assert "[truncated" in content
-    assert messages[0]["content"][0]["content"] == "x" * 50
+    assert content.startswith("head")
+    assert content.endswith("tail")
+    assert "truncated by context budget" in content
+    assert messages[0]["content"][0]["content"] == original
 
 
 def test_snip_old_messages_preserves_head_and_tail() -> None:

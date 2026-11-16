@@ -14,7 +14,7 @@ class ContextManager:
         raise NotImplementedError('TODO: implement estimate_tokens')
 
     def trim_tool_output(self, messages: list[dict[str, Any]], max_chars: int | None=None) -> list[dict[str, Any]]:
-        """Return a copy with long tool_result content truncated."""
+        """Return a copy with long tool_result content truncated head and tail."""
         raise NotImplementedError('TODO: implement trim_tool_output')
 
     def snip_old_messages(self, messages: list[dict[str, Any]], keep_head: int | None=None, keep_tail: int | None=None) -> list[dict[str, Any]]:
