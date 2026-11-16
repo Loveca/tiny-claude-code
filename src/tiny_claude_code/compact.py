@@ -1,12 +1,13 @@
 """LLM-backed conversation compaction."""
 from __future__ import annotations
+from pathlib import Path
 from typing import Any
 COMPACT_SYSTEM_PROMPT = 'Summarize the conversation for a coding agent. Keep user goals, decisions, changed files, commands run, test results, and unresolved next steps.'
 
 class CompactManager:
     """Replace long history with an LLM summary plus recent turns."""
 
-    def __init__(self, keep_recent: int=6, max_summary_tokens: int=1000) -> None:
+    def __init__(self, keep_recent: int=6, max_summary_tokens: int=1000, archive_dir: str | Path | None=None) -> None:
         raise NotImplementedError('TODO: implement __init__')
 
     def summarize(self, messages: list[dict[str, Any]], client: Any) -> str:
@@ -17,6 +18,10 @@ class CompactManager:
 
     def compact(self, messages: list[dict[str, Any]], client: Any) -> list[dict[str, Any]]:
         raise NotImplementedError('TODO: implement compact')
+
+    def _archive(self, messages: list[dict[str, Any]]) -> Path | None:
+        """Write the pre-compact transcript so compaction stays reversible."""
+        raise NotImplementedError('TODO: implement _archive')
 
     def _format_transcript(self, messages: list[dict[str, Any]]) -> str:
         raise NotImplementedError('TODO: implement _format_transcript')

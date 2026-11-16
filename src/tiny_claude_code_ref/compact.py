@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 
@@ -14,9 +17,16 @@ COMPACT_SYSTEM_PROMPT = (
 class CompactManager:
     """Replace long history with an LLM summary plus recent turns."""
 
-    def __init__(self, keep_recent: int = 6, max_summary_tokens: int = 1000) -> None:
+    def __init__(
+        self,
+        keep_recent: int = 6,
+        max_summary_tokens: int = 1000,
+        archive_dir: str | Path | None = None,
+    ) -> None:
         self.keep_recent = keep_recent
         self.max_summary_tokens = max_summary_tokens
+        self.archive_dir = Path(archive_dir) if archive_dir is not None else None
+        self.last_archive_path: Path | None = None
 
     def summarize(self, messages: list[dict[str, Any]], client: Any) -> str:
         transcript = self._format_transcript(messages)
@@ -43,9 +53,23 @@ class CompactManager:
         return [summary_message] + list(recent_messages)
 
     def compact(self, messages: list[dict[str, Any]], client: Any) -> list[dict[str, Any]]:
+        self.last_archive_path = self._archive(messages)
         summary = self.summarize(messages, client)
         recent = messages[-self.keep_recent :] if self.keep_recent else []
         return self.build_compact_messages(summary, recent)
+
+    def _archive(self, messages: list[dict[str, Any]]) -> Path | None:
+        """Write the pre-compact transcript so compaction stays reversible."""
+        if self.archive_dir is None:
+            return None
+        self.archive_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+        path = self.archive_dir / f"compact-{stamp}.json"
+        path.write_text(
+            json.dumps(messages, ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8",
+        )
+        return path
 
     def _format_transcript(self, messages: list[dict[str, Any]]) -> str:
         parts = []

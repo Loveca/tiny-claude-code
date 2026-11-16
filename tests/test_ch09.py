@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from tiny_claude_code.agent import agent_loop
 from tiny_claude_code.compact import CompactManager
 from tiny_claude_code.context import ContextManager
@@ -40,6 +42,19 @@ def test_compact_reduces_message_count() -> None:
     assert len(compacted) == 3
     assert compacted[0]["content"].endswith("short summary")
     assert [message["content"] for message in compacted[1:]] == ["8", "9"]
+
+
+def test_compact_archives_full_transcript(tmp_path) -> None:
+    client = MockLLMClient()
+    client.add_text_response("short summary")
+    manager = CompactManager(keep_recent=1, archive_dir=tmp_path)
+    messages = [{"role": "user", "content": str(index)} for index in range(4)]
+
+    manager.compact(messages, client)
+
+    assert manager.last_archive_path is not None
+    archived = json.loads(manager.last_archive_path.read_text(encoding="utf-8"))
+    assert [message["content"] for message in archived] == ["0", "1", "2", "3"]
 
 
 def test_context_manager_can_auto_compact_with_llm_summary() -> None:

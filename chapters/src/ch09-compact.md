@@ -68,6 +68,9 @@ ch09 的 compact 像这样：
 用户输入 /compact
   |
   v
+archive full transcript（可选，保存到 sessions/archives/）
+  |
+  v
 format transcript
   |
   v
@@ -93,10 +96,11 @@ build_compact_messages(summary, recent_messages)
 
 需要实现：
 
-- `CompactManager.__init__`
+- `CompactManager.__init__`（支持可选的 `archive_dir`）
 - `summarize`
 - `build_compact_messages`
 - `compact`
+- `_archive`
 - `_format_transcript`
 - `_content_to_text`
 - `_extract_text`
@@ -105,7 +109,17 @@ build_compact_messages(summary, recent_messages)
 
 ## 实现路线
 
-### 第一步：格式化 transcript
+### 第一步：归档原始历史
+
+compact 是不可逆的：摘要一旦生成，原始对话就没了。如果摘要漏掉关键结论，agent 无法找回。所以压缩前先把完整 messages 写一份存档：
+
+```text
+archive_dir/compact-<UTC 时间戳>.json
+```
+
+CLI 传入 `.tiny-claude-code/sessions/archives/`，与正常会话文件分开放，避免被 `list_sessions()` 误认成会话。没有传 `archive_dir` 时跳过归档，行为与之前一致。
+
+### 第二步：格式化 transcript
 
 LLM 总结前，需要把 messages 转成可读文本：
 
@@ -117,7 +131,7 @@ tool_result: ...
 
 不需要保留所有底层 block 结构。目标是让总结模型看懂发生过什么。
 
-### 第二步：调用 LLM 生成摘要
+### 第三步：调用 LLM 生成摘要
 
 summary prompt 要明确要求输出继续工作需要的信息，而不是泛泛总结。
 
@@ -128,7 +142,7 @@ Include goals, files inspected, changes made, test results, and open issues.
 
 测试里会用 mock LLM，所以实现应走 `client.chat(...)`，不要绕过客户端。
 
-### 第三步：构造新 messages
+### 第四步：构造新 messages
 
 保留最近 N 条消息，前面加摘要消息：
 
@@ -138,7 +152,7 @@ Include goals, files inspected, changes made, test results, and open issues.
 
 N 不宜太小，否则模型会失去当前动作上下文；也不宜太大，否则 compact 效果不明显。
 
-### 第四步：接入手动和自动触发
+### 第五步：接入手动和自动触发
 
 手动触发：
 
@@ -168,6 +182,7 @@ python scripts/dev.py test --ch 09
 
 - summarize 会调用 LLM 并返回文本
 - build_compact_messages 会包含摘要和最近消息
+- compact 会先把完整 transcript 归档，且可再读回
 - compact 会减少消息数量
 - ContextManager 可以自动调用 LLM 总结
 - agent loop 自动 compact 后仍能回答
@@ -183,6 +198,7 @@ python scripts/dev.py test --ch 09
 期望行为：
 
 - CLI 显示压缩完成
+- CLI 显示归档文件路径（`.tiny-claude-code/sessions/archives/` 下）
 - messages 数量明显减少
 - agent 仍然知道当前任务背景
 

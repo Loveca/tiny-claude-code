@@ -116,7 +116,7 @@ def main(argv: list[str] | None = None) -> None:
     stop_log = StopLogHook()
     error_handler = ErrorHandler()
     context_manager = ContextManager()
-    compact_manager = CompactManager()
+    compact_manager = CompactManager(archive_dir=sessions.session_dir / "archives")
     hooks.register("PreToolUse", permissions.as_hook, priority=100)
     hooks.register("PostToolUse", tool_log.post_tool_use)
     hooks.register("Stop", stop_log.stop)
@@ -139,6 +139,8 @@ def main(argv: list[str] | None = None) -> None:
             messages[:] = compact_manager.compact(messages, client)
             sessions.save(session_id, messages, {"workspace": str(workspace)})
             print(f"Compacted conversation to {len(messages)} messages.")
+            if compact_manager.last_archive_path is not None:
+                print(f"Pre-compact transcript archived to {compact_manager.last_archive_path}")
             continue
         if user_input.startswith("/memory"):
             print(handle_memory_command(memory, user_input))
