@@ -61,8 +61,23 @@ def test_shell_timeout() -> None:
 
 
 def test_shell_truncates_long_output() -> None:
-    tool = ShellTool(max_output_chars=20)
+    tool = ShellTool(max_output_chars=80)
 
-    result = tool.execute("python -c \"print('x' * 100)\"")
+    result = tool.execute(
+        "python -c \"print('start'); print('x' * 100); print('end')\""
+    )
 
-    assert "[truncated]" in result
+    assert "[truncated" in result
+    assert "start" in result
+    assert "end" in result
+
+
+def test_shell_keeps_stderr_when_output_is_truncated() -> None:
+    tool = ShellTool(max_output_chars=80)
+
+    result = tool.execute(
+        "python -c \"import sys; print('x' * 500); print('boom', file=sys.stderr)\""
+    )
+
+    assert "[truncated" in result
+    assert "boom" in result

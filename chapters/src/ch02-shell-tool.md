@@ -96,7 +96,7 @@ stderr:
 - `exit_code: 0` 表示命令成功
 - 非 0 exit code 表示命令失败
 - stdout / stderr 分别保留普通输出和错误输出
-- 输出过长时出现 `[truncated]`，提醒模型结果不完整
+- 输出过长时保留首尾并出现 `[truncated N chars]`，提醒模型结果不完整
 
 ## 本章要实现什么
 
@@ -108,7 +108,7 @@ stderr:
 - `schema`：返回名为 `bash` 的工具 schema。
 - `validate_command`：拒绝空命令和过长命令。
 - `execute`：用 `subprocess.run` 执行命令。
-- `_truncate`：截断过长输出并追加 `[truncated]`。
+- `_truncate`：截断过长输出，保留首尾并插入 `[truncated N chars]`。
 
 `execute` 的核心形状是：
 
@@ -159,8 +159,10 @@ Shell 输出可能非常长。ch08 才会正式做上下文预算，但工具层
 原始输出超过 max_output_chars
   |
   v
-保留前半段 + "\n[truncated]"
+保留前半 + "\n[truncated N chars]\n" + 后半
 ```
+
+只保留前半段看似够用，但 `exit_code` 在开头、stderr 在结尾——两头都是有诊断价值的信息。保留首尾后，模型仍然能看到退出码和最后一行报错。
 
 ## 测试讲解
 
@@ -179,7 +181,8 @@ python scripts/dev.py test --ch 02
 - 空命令被拒绝
 - 过长命令被拒绝
 - 超时命令被截断执行并返回错误
-- 长输出会出现 `[truncated]`
+- 长输出会保留首尾并出现 `[truncated N chars]`
+- 超长输出里 stderr 不会因为截断而丢失
 
 如果第一条测试失败，先看 schema；如果后续测试失败，再看 `execute` 的返回格式和异常处理。
 

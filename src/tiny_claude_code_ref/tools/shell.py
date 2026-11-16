@@ -72,5 +72,9 @@ class ShellTool(Tool):
     def _truncate(self, text: str) -> str:
         if len(text) <= self.max_output_chars:
             return text
-        return text[: self.max_output_chars] + "\n[truncated]"
+        keep = self.max_output_chars // 2
+        head = text[:keep]
+        tail = text[-(self.max_output_chars - keep) :]
+        removed = len(text) - len(head) - len(tail)
+        return f"{head}\n[truncated {removed} chars]\n{tail}"
 
