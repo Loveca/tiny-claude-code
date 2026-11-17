@@ -87,6 +87,27 @@ def test_fallback_model_is_used_after_primary_failure() -> None:
     assert [call["model"] for call in client.calls] == ["primary", "backup"]
 
 
+def test_primary_model_restored_after_fallback_success() -> None:
+    client = FlakyClient([APIError("server error", 500), message("ok")])
+    handler = ErrorHandler(fallback_models=["backup"], sleep=lambda _: None)
+
+    handler.chat(client, [])
+
+    assert client.model == "primary"
+
+
+def test_primary_model_restored_after_total_failure() -> None:
+    client = FlakyClient(
+        [APIError("server error", 500), APIError("server error", 500)]
+    )
+    handler = ErrorHandler(fallback_models=["backup"], sleep=lambda _: None)
+
+    with pytest.raises(APIError):
+        handler.chat(client, [])
+
+    assert client.model == "primary"
+
+
 def test_agent_loop_max_turn_guard() -> None:
     client = MockLLMClient()
     for _ in range(3):

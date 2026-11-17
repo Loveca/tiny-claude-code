@@ -29,32 +29,39 @@ class ErrorHandler:
         system: str | None = None,
         max_tokens: int = 8000,
     ) -> Any:
-        models = [getattr(client, "model", None)] + self.fallback_models
+        original_model = getattr(client, "model", None)
+        models = [original_model] + self.fallback_models
         models = [model for model in models if model]
         last_error: Exception | None = None
 
-        for model in models or [None]:
-            if model and hasattr(client, "model"):
-                client.model = model
-            current_tokens = max_tokens
+        try:
+            for model in models or [None]:
+                if model and hasattr(client, "model"):
+                    client.model = model
+                current_tokens = max_tokens
 
-            for attempt in range(self.max_retries + 1):
-                try:
-                    return client.chat(
-                        messages, tools=tools, max_tokens=current_tokens, system=system
-                    )
-                except Exception as exc:  # noqa: BLE001 - this is a boundary wrapper.
-                    last_error = exc
-                    if self._is_token_limit(exc) and current_tokens < 64000:
-                        current_tokens = min(current_tokens * 2, 64000)
-                        continue
-                    if self._status_code(exc) == 529:
-                        self.sleep(self._retry_after(exc) or self._backoff(attempt))
-                        continue
-                    if self._status_code(exc) == 429 and attempt < self.max_retries:
-                        self.sleep(self._backoff(attempt))
-                        continue
-                    break
+                for attempt in range(self.max_retries + 1):
+                    try:
+                        return client.chat(
+                            messages, tools=tools, max_tokens=current_tokens, system=system
+                        )
+                    except Exception as exc:  # noqa: BLE001 - this is a boundary wrapper.
+                        last_error = exc
+                        if self._is_token_limit(exc) and current_tokens < 64000:
+                            current_tokens = min(current_tokens * 2, 64000)
+                            continue
+                        if self._status_code(exc) == 529:
+                            self.sleep(self._retry_after(exc) or self._backoff(attempt))
+                            continue
+                        if self._status_code(exc) == 429 and attempt < self.max_retries:
+                            self.sleep(self._backoff(attempt))
+                            continue
+                        break
+        finally:
+            # Restore the original model so the next call starts from the
+            # primary model instead of staying stuck on a fallback.
+            if original_model is not None and hasattr(client, "model"):
+                client.model = original_model
 
         if last_error is not None:
             raise last_error
