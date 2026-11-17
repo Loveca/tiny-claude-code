@@ -110,6 +110,14 @@ python scripts/dev.py run
 
 The student implementation uses `src/tiny_claude_code/`, so it will only work after you implement the required TODOs.
 
+Run a single task without entering the REPL:
+
+```bash
+python scripts/dev.py run --ref -- "list the files in this repo"
+```
+
+Use `--workspace <dir>` (or `-w <dir>`) to point the agent at another project.
+
 ## Use a Real LLM
 
 Copy the example environment file:

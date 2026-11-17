@@ -31,12 +31,13 @@ def main(argv: list[str] | None=None) -> None:
 
     Flow:
     1. Initialize LLMClient
-    2. while True: read user input
-    3. If input is /exit or /quit -> exit
-    4. Append user input to messages
-    5. Call agent_loop(messages, ...)
-    6. Print agent response
-    7. Continue loop
+    2. If a task was passed as an argument, run it once, save the session, and exit
+    3. while True: read user input
+    4. If input is /exit or /quit -> exit
+    5. Append user input to messages
+    6. Call agent_loop(messages, ...)
+    7. Print agent response
+    8. Continue loop
 
     ch01: implement basic REPL (read input -> call agent_loop -> print response)
     ch02: initialize tool_handlers and pass to agent_loop

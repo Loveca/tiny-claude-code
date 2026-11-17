@@ -201,6 +201,8 @@ Anthropic response 上有一个 `stop_reason` 字段。本章只关心两个情�
 - 组装 system prompt，告诉模型它是 coding agent，并告知当前 workspace
 - 读取用户输入
 - 支持 `/exit` 和 `/quit`
+- 支持把任务作为命令行参数直接执行（非交互模式，跑完即退出）
+- 支持 `--workspace` 指定工作目录（默认当前目录，交互模式和非交互模式共用）
 - 每轮调用 `agent_loop`
 - 打印最终文本
 
