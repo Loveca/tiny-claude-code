@@ -103,16 +103,16 @@ class ContextManager:
         client: Any | None = None,
         compact_manager: Any | None = None,
     ) -> list[dict[str, Any]]:
-        """Shrink messages in place and return them."""
-        if not messages or self.estimate_tokens(messages) <= self.max_tokens:
+        """Shrink messages in place toward target_tokens and return them."""
+        if not messages or self.estimate_tokens(messages) <= self.target_tokens:
             return messages
 
         reduced = self.trim_tool_output(messages)
-        if self.estimate_tokens(reduced) > self.max_tokens:
+        if self.estimate_tokens(reduced) > self.target_tokens:
             reduced = self.snip_old_messages(reduced)
 
         if (
-            self.estimate_tokens(reduced) > self.max_tokens
+            self.estimate_tokens(reduced) > self.target_tokens
             and compact_manager is not None
             and client is not None
         ):

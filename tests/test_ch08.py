@@ -101,6 +101,24 @@ def test_snip_old_messages_preserves_head_and_tail() -> None:
     ]
 
 
+def test_compact_starts_at_target_tokens() -> None:
+    manager = ContextManager(max_tokens=1000, target_tokens=10, keep_head=1, keep_tail=1)
+    messages = [{"role": "user", "content": "x" * 200} for _ in range(4)]
+
+    manager.compact(messages)
+
+    assert len(messages) < 4
+
+
+def test_compact_leaves_messages_under_target_untouched() -> None:
+    manager = ContextManager(max_tokens=1000, target_tokens=5000)
+    messages = [{"role": "user", "content": "x" * 40}]
+
+    manager.compact(messages)
+
+    assert messages == [{"role": "user", "content": "x" * 40}]
+
+
 def test_compact_pipeline_reduces_token_count() -> None:
     manager = ContextManager(max_tokens=20, max_tool_chars=20, keep_head=1, keep_tail=1)
     messages = [{"role": "user", "content": "x" * 200} for _ in range(6)]

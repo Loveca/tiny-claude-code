@@ -93,6 +93,8 @@ tool_result content 太长
 
 但 head 和 tail 的边界要小心：如果 head 的最后一条是带 `tool_use` 的 assistant 消息，而对应的 `tool_result` 被裁掉，或者 tail 的第一条是 `tool_result` 而对应的 `tool_use` 被裁掉，都会留下孤儿块，API 会直接返回 400。裁剪时从 head 末尾去掉 `tool_use`、从 tail 开头去掉 `tool_result`，保证配对完整。
 
+预算有两个数：`max_tokens` 是模型窗口的硬上限，`target_tokens` 是希望维持的预算（默认是上限的 80%）。压缩管线以 target 为触发线：超过 target 就开始 trim → snip → LLM 摘要，给自己留出余量，而不是等真正撑满窗口才动手。
+
 ## 本章要实现什么
 
 主要修改：
@@ -165,6 +167,7 @@ python scripts/dev.py test --ch 08
 - 工具输出截断会保留首尾并加省略标记
 - 不需要截断的消息按引用复用（copy-on-write）
 - 裁剪旧消息会保留头尾，且不拆散 tool_use/tool_result 配对
+- 超过 target_tokens 就开始压缩，未超过则消息原样不动
 - compact 后 token 数下降
 - 空消息不会崩溃
 - agent loop 会在 LLM 调用前压缩

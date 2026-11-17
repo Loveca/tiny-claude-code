@@ -22,7 +22,7 @@ class ContextManager:
         raise NotImplementedError('TODO: implement snip_old_messages')
 
     def compact(self, messages: list[dict[str, Any]], client: Any | None=None, compact_manager: Any | None=None) -> list[dict[str, Any]]:
-        """Shrink messages in place and return them."""
+        """Shrink messages in place toward target_tokens and return them."""
         raise NotImplementedError('TODO: implement compact')
 
     def _content_to_text(self, content: Any) -> str:
