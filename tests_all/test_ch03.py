@@ -128,3 +128,39 @@ def test_search_limits_results(tmp_path: Path) -> None:
 
     assert "[truncated]" in result
     assert len([line for line in result.splitlines() if line.endswith(".py")]) == 2
+
+
+def test_search_grep_skips_hidden_directories(tmp_path: Path) -> None:
+    hidden = tmp_path / ".git"
+    hidden.mkdir()
+    (hidden / "pack.txt").write_text("needle", encoding="utf-8")
+    (tmp_path / "app.py").write_text("needle", encoding="utf-8")
+
+    result = SearchTool().execute("needle", type="grep", workspace=str(tmp_path))
+
+    assert "app.py" in result
+    assert ".git" not in result
+
+
+def test_search_glob_skips_hidden_directories(tmp_path: Path) -> None:
+    hidden = tmp_path / ".venv"
+    hidden.mkdir()
+    (hidden / "dependency.py").write_text("", encoding="utf-8")
+    (tmp_path / "app.py").write_text("", encoding="utf-8")
+
+    result = SearchTool().execute("*.py", workspace=str(tmp_path))
+
+    assert "app.py" in result
+    assert "dependency.py" not in result
+
+
+def test_search_grep_skips_oversized_files(tmp_path: Path) -> None:
+    (tmp_path / "big.py").write_text("needle" + "x" * 100, encoding="utf-8")
+    (tmp_path / "small.py").write_text("needle", encoding="utf-8")
+
+    result = SearchTool(max_file_bytes=50).execute(
+        "needle", type="grep", workspace=str(tmp_path)
+    )
+
+    assert "small.py" in result
+    assert "big.py" not in result

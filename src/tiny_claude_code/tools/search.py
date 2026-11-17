@@ -7,7 +7,7 @@ from tiny_claude_code.tools.base import Tool
 class SearchTool(Tool):
     name = 'search'
 
-    def __init__(self, workspace: str | Path | None=None, max_results: int=200, max_output_chars: int=50000) -> None:
+    def __init__(self, workspace: str | Path | None=None, max_results: int=200, max_output_chars: int=50000, max_file_bytes: int=2_000_000) -> None:
         raise NotImplementedError('TODO: implement __init__')
 
     @property

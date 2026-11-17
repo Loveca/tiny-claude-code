@@ -16,10 +16,12 @@ class SearchTool(Tool):
         workspace: str | Path | None = None,
         max_results: int = 200,
         max_output_chars: int = 50000,
+        max_file_bytes: int = 2_000_000,
     ) -> None:
         self.workspace = Path(workspace or Path.cwd()).resolve()
         self.max_results = max_results
         self.max_output_chars = max_output_chars
+        self.max_file_bytes = max_file_bytes
 
     @property
     def schema(self) -> dict[str, Any]:
@@ -63,17 +65,35 @@ class SearchTool(Tool):
             return self._grep(root, pattern)
         return f"Error: unknown search type: {type}"
 
+    @staticmethod
+    def _is_hidden(path: Path, root: Path) -> bool:
+        """True if any component below root starts with a dot (.git, .venv...)."""
+        return any(part.startswith(".") for part in path.relative_to(root).parts)
+
     def _glob(self, root: Path, pattern: str) -> str:
-        matches = sorted(str(path.relative_to(root)) for path in root.rglob(pattern))
+        matches = sorted(
+            str(path.relative_to(root))
+            for path in root.rglob(pattern)
+            if not self._is_hidden(path, root)
+        )
         return self._format_matches(matches)
 
     def _grep(self, root: Path, pattern: str) -> str:
         matches = []
-        files = [root] if root.is_file() else [p for p in root.rglob("*") if p.is_file()]
+        if root.is_file():
+            files = [root]
+        else:
+            files = [
+                path
+                for path in root.rglob("*")
+                if path.is_file() and not self._is_hidden(path, root)
+            ]
         for file_path in files:
             try:
+                if file_path.stat().st_size > self.max_file_bytes:
+                    continue
                 lines = file_path.read_text(encoding="utf-8").splitlines()
-            except UnicodeDecodeError:
+            except (UnicodeDecodeError, OSError):
                 continue
             for line_no, line in enumerate(lines, 1):
                 if pattern in line:
