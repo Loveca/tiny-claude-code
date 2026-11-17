@@ -14,11 +14,11 @@ class ContextManager:
         raise NotImplementedError('TODO: implement estimate_tokens')
 
     def trim_tool_output(self, messages: list[dict[str, Any]], max_chars: int | None=None) -> list[dict[str, Any]]:
-        """Return a copy with long tool_result content truncated head and tail."""
+        """Truncate long tool_result content head and tail, reusing untouched messages."""
         raise NotImplementedError('TODO: implement trim_tool_output')
 
     def snip_old_messages(self, messages: list[dict[str, Any]], keep_head: int | None=None, keep_tail: int | None=None) -> list[dict[str, Any]]:
-        """Return a copy that preserves the beginning and end of the history."""
+        """Keep head and tail of the history without splitting tool_use/tool_result pairs."""
         raise NotImplementedError('TODO: implement snip_old_messages')
 
     def compact(self, messages: list[dict[str, Any]], client: Any | None=None, compact_manager: Any | None=None) -> list[dict[str, Any]]:

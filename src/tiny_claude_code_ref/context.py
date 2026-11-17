@@ -33,14 +33,20 @@ class ContextManager:
     def trim_tool_output(
         self, messages: list[dict[str, Any]], max_chars: int | None = None
     ) -> list[dict[str, Any]]:
-        """Return a copy with long tool_result content truncated head and tail."""
+        """Return messages with long tool_result content truncated head and tail.
+
+        Copy-on-write: messages that need no trimming are reused by reference,
+        so a long history isn't deep-copied wholesale on every budget check.
+        """
         limit = max_chars or self.max_tool_chars
-        trimmed = deepcopy(messages)
-        for message in trimmed:
+        trimmed: list[dict[str, Any]] = []
+        for message in messages:
             content = message.get("content")
-            if not isinstance(content, list):
+            if not isinstance(content, list) or not self._needs_trim(content, limit):
+                trimmed.append(message)
                 continue
-            for block in content:
+            message = deepcopy(message)
+            for block in message["content"]:
                 if not isinstance(block, dict) or block.get("type") != "tool_result":
                     continue
                 text = str(block.get("content", ""))
@@ -53,7 +59,16 @@ class ContextManager:
                         f"[... {removed} chars truncated by context budget ...]\n"
                         f"{tail}"
                     )
+            trimmed.append(message)
         return trimmed
+
+    @staticmethod
+    def _needs_trim(content: list[Any], limit: int) -> bool:
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                if len(str(block.get("content", ""))) > limit:
+                    return True
+        return False
 
     def snip_old_messages(
         self,
@@ -69,6 +84,12 @@ class ContextManager:
 
         head = deepcopy(messages[:head_count])
         tail = deepcopy(messages[-tail_count:]) if tail_count else []
+        # A cut between an assistant tool_use and its tool_result leaves an
+        # orphan block on either side, and the API rejects that history.
+        while head and self._ends_with_tool_use(head[-1]):
+            head = head[:-1]
+        while tail and self._has_tool_result(tail[0]):
+            tail = tail[1:]
         omitted = len(messages) - len(head) - len(tail)
         marker = {
             "role": "user",
@@ -99,6 +120,24 @@ class ContextManager:
 
         messages[:] = reduced
         return messages
+
+    @staticmethod
+    def _block_type(block: Any) -> str | None:
+        if isinstance(block, dict):
+            return block.get("type")
+        return getattr(block, "type", None)
+
+    def _has_tool_result(self, message: dict[str, Any]) -> bool:
+        content = message.get("content")
+        if not isinstance(content, list):
+            return False
+        return any(self._block_type(block) == "tool_result" for block in content)
+
+    def _ends_with_tool_use(self, message: dict[str, Any]) -> bool:
+        content = message.get("content")
+        if not isinstance(content, list):
+            return False
+        return any(self._block_type(block) == "tool_use" for block in content)
 
     def _content_to_text(self, content: Any) -> str:
         if content is None:

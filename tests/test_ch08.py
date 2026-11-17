@@ -33,6 +33,60 @@ def test_trim_tool_output_keeps_head_and_tail() -> None:
     assert messages[0]["content"][0]["content"] == original
 
 
+def test_trim_tool_output_reuses_untouched_messages() -> None:
+    manager = ContextManager(max_tool_chars=10)
+    long_result = {
+        "role": "user",
+        "content": [{"type": "tool_result", "tool_use_id": "1", "content": "x" * 50}],
+    }
+    short_result = {
+        "role": "user",
+        "content": [{"type": "tool_result", "tool_use_id": "2", "content": "ok"}],
+    }
+
+    trimmed = manager.trim_tool_output([long_result, short_result])
+
+    assert trimmed[0] is not long_result
+    assert trimmed[1] is short_result
+
+
+def test_snip_old_messages_does_not_split_tool_pairs() -> None:
+    manager = ContextManager(keep_head=2, keep_tail=1)
+    messages = [
+        {"role": "user", "content": "goal"},
+        {
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": "t1", "name": "bash", "input": {}}],
+        },
+        {
+            "role": "user",
+            "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "out"}],
+        },
+        {"role": "assistant", "content": "working"},
+        {
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": "t2", "name": "bash", "input": {}}],
+        },
+        {
+            "role": "user",
+            "content": [{"type": "tool_result", "tool_use_id": "t2", "content": "out2"}],
+        },
+    ]
+
+    snipped = manager.snip_old_messages(messages)
+
+    blocks = [
+        block
+        for message in snipped
+        if isinstance(message["content"], list)
+        for block in message["content"]
+    ]
+    assert not [
+        block for block in blocks if block["type"] in ("tool_use", "tool_result")
+    ]
+    assert snipped[0] == messages[0]
+
+
 def test_snip_old_messages_preserves_head_and_tail() -> None:
     manager = ContextManager(keep_head=1, keep_tail=2)
     messages = [{"role": "user", "content": str(index)} for index in range(8)]
