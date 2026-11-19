@@ -11,6 +11,7 @@ Usage:
 """
 
 import argparse
+import glob
 import os
 import shutil
 import subprocess
@@ -45,20 +46,23 @@ def cmd_test(args):
         return
 
     ch_num = int(args.ch)
-    test_file = f"test_ch{ch_num:02d}.py"
-    src_path = os.path.join(TESTS_ALL_DIR, test_file)
+    pattern = f"test_ch{ch_num:02d}*.py"
+    src_paths = sorted(glob.glob(os.path.join(TESTS_ALL_DIR, pattern)))
 
-    if not os.path.exists(src_path):
-        print(f"No test file found for chapter {ch_num}: {test_file}")
+    if not src_paths:
+        print(f"No test file found for chapter {ch_num}: test_ch{ch_num:02d}.py")
         sys.exit(1)
 
-    # Copy test file to working tests directory
-    dst_path = os.path.join(TESTS_DIR, test_file)
-    shutil.copy2(src_path, dst_path)
+    # Copy test files to working tests directory
+    dst_paths = []
+    for src_path in src_paths:
+        dst_path = os.path.join(TESTS_DIR, os.path.basename(src_path))
+        shutil.copy2(src_path, dst_path)
+        dst_paths.append(dst_path)
 
     # Run pytest
     subprocess.run(
-        [sys.executable, "-m", "pytest", dst_path, "-v"],
+        [sys.executable, "-m", "pytest", *dst_paths, "-v"],
         cwd=PROJECT_ROOT,
         env=env,
     )
