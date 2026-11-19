@@ -188,11 +188,15 @@ class TeamManager:
         from tiny_claude_code_ref.tools.search import SearchTool
         from tiny_claude_code_ref.tools.shell import ShellTool
 
+        from tiny_claude_code_ref.tools.team import TeamInboxTool, TeamSendTool
+
         registry = ToolRegistry()
         registry.register(ShellTool(workspace=member.workspace))
         registry.register(ReadTool(workspace=member.workspace))
         registry.register(WriteTool(workspace=member.workspace))
         registry.register(SearchTool(workspace=member.workspace))
+        registry.register(TeamSendTool(self, member.name))
+        registry.register(TeamInboxTool(self, member.name))
         return registry
 
     def _get_member(self, name: str) -> TeamMember:
