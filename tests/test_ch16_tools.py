@@ -123,6 +123,43 @@ def test_shutdown_tool_removes_worktree(tmp_path: Path) -> None:
     assert not worktree_path.exists()
 
 
+def test_default_registry_registers_team_tools_when_manager_is_passed(
+    tmp_path: Path,
+) -> None:
+    from tiny_claude_code.tools import create_default_registry
+
+    team = TeamManager(MockLLMClient(), tmp_path)
+    registry = create_default_registry(
+        tmp_path, client=MockLLMClient(), team_manager=team
+    )
+
+    names = {schema["name"] for schema in registry.get_schemas()}
+
+    assert {
+        "TeamSpawn",
+        "TeamSend",
+        "TeamInbox",
+        "TeamStatus",
+        "TeamWait",
+        "TeamShutdown",
+        "WorktreeMerge",
+    } <= names
+    assert "SubAgent" in names
+
+
+def test_default_registry_without_team_manager_has_no_team_tools(
+    tmp_path: Path,
+) -> None:
+    from tiny_claude_code.tools import create_default_registry
+
+    registry = create_default_registry(tmp_path)
+
+    names = {schema["name"] for schema in registry.get_schemas()}
+
+    assert not any(name.startswith("Team") for name in names)
+    assert "WorktreeMerge" not in names
+
+
 @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 def test_merge_tool_merges_worktree_branch(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path / "repo")

@@ -43,6 +43,7 @@ def create_default_registry(
     background_manager: Any = None,
     cron_scheduler: Any = None,
     plugin_dir: str | Path | None = None,
+    team_manager: Any = None,
 ) -> ToolRegistry:
     from tiny_claude_code_ref.background import (
         BackgroundManager,
@@ -53,6 +54,15 @@ def create_default_registry(
     from tiny_claude_code_ref.tasks import TaskManager, TodoWriteTool
     from tiny_claude_code_ref.cron import CronScheduler, CronScheduleTool
     from tiny_claude_code_ref.tools.plugin import PluginLoader
+    from tiny_claude_code_ref.tools.team import (
+        TeamInboxTool,
+        TeamSendTool,
+        TeamShutdownTool,
+        TeamSpawnTool,
+        TeamStatusTool,
+        TeamWaitTool,
+        WorktreeMergeTool,
+    )
 
     registry = ToolRegistry()
     registry.register(ShellTool(workspace=workspace))
@@ -66,6 +76,15 @@ def create_default_registry(
     registry.register(BackgroundSubmitTool(background_manager))
     registry.register(BackgroundPollTool(background_manager))
     registry.register(CronScheduleTool(cron_scheduler))
+    if team_manager is not None:
+        lead = team_manager.LEAD
+        registry.register(TeamSpawnTool(team_manager))
+        registry.register(TeamSendTool(team_manager, lead))
+        registry.register(TeamInboxTool(team_manager, lead))
+        registry.register(TeamStatusTool(team_manager))
+        registry.register(TeamWaitTool(team_manager))
+        registry.register(TeamShutdownTool(team_manager))
+        registry.register(WorktreeMergeTool(team_manager))
     if client is not None:
         registry.register(SubAgentTool(client=client, tools=registry))
     PluginLoader(plugin_dir).load_plugins(registry)
@@ -88,6 +107,13 @@ __all__ = [
     "CronScheduler",
     "CronScheduleTool",
     "PluginLoader",
+    "TeamSpawnTool",
+    "TeamSendTool",
+    "TeamInboxTool",
+    "TeamStatusTool",
+    "TeamWaitTool",
+    "TeamShutdownTool",
+    "WorktreeMergeTool",
     "create_default_registry",
 ]
 
@@ -123,5 +149,17 @@ def __getattr__(name: str) -> Any:
         from tiny_claude_code_ref.tools.plugin import PluginLoader
 
         return PluginLoader
+    if name in {
+        "TeamSpawnTool",
+        "TeamSendTool",
+        "TeamInboxTool",
+        "TeamStatusTool",
+        "TeamWaitTool",
+        "TeamShutdownTool",
+        "WorktreeMergeTool",
+    }:
+        from tiny_claude_code_ref.tools import team as team_tools
+
+        return getattr(team_tools, name)
     raise AttributeError(name)
 
