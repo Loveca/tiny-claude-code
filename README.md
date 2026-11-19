@@ -157,6 +157,7 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 | Part 3 | ch08-ch10 | Context budget, `/compact`, sessions, memory |
 | Part 4 | ch11-ch13 | Todo system, subagents, background tasks, cron |
 | Part 5 | ch14-ch15 | Real project challenge, skills, plugins |
+| Part 6 | ch16+ | Multi-agent teams, worktree isolation, and further harness extensions |
 
 Released chapters:
 
@@ -175,6 +176,7 @@ Released chapters:
 - ch13: Background tasks and cron
 - ch14: Real project challenge
 - ch15: Skills and plugin extension
+- ch16: Multi-agent teams and worktree isolation
 
 Chapter material lives in [chapters/src/](./chapters/src).
 

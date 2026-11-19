@@ -151,6 +151,7 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 | Part 3 | ch08-ch10 | 上下文预算、`/compact`、session、memory |
 | Part 4 | ch11-ch13 | Todo 系统、subagent、后台任务、cron |
 | Part 5 | ch14-ch15 | 真实项目挑战、skills、plugins |
+| Part 6 | ch16+ | 多 agent 团队、worktree 隔离及后续 harness 扩展 |
 
 已发布章节：
 
@@ -169,6 +170,7 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 - ch13: Background tasks and cron
 - ch14: Real project challenge
 - ch15: Skills and plugin extension
+- ch16: Multi-agent teams and worktree isolation
 
 章节材料在 [chapters/src/](./chapters/src)。
 
