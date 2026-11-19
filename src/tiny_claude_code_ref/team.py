@@ -150,6 +150,112 @@ class TeamManager:
         self._mailboxes[name] = []
         return messages
 
+    def step(self, name: str) -> str:
+        """Run one model turn for one member.
+
+        A turn drains unread mail into the transcript, calls the model once,
+        dispatches any requested tools, and updates the member status. A final
+        text answer marks the member done and sends it to the lead as a result.
+        """
+        member = self._get_member(name)
+        if member.status in ("done", "error"):
+            return ""
+        unread = self.inbox(name)
+        if unread:
+            self._append_user(
+                member, "\n".join(_format_incoming(message) for message in unread)
+            )
+        if not member.messages:
+            return ""
+        schemas = member.registry.get_schemas() if member.registry is not None else None
+        try:
+            response = self.client.chat(
+                member.messages,
+                tools=schemas,
+                system=member.system_prompt,
+            )
+        except Exception as exc:
+            member.status = "error"
+            member.result = str(exc)
+            self.send(name, LEAD, f"error: {exc}", kind="result")
+            return member.result
+
+        member.messages.append({"role": "assistant", "content": response.content})
+        if getattr(response, "stop_reason", None) != "tool_use":
+            text = _extract_text(response.content).strip()
+            member.status = "done"
+            member.result = text
+            self.send(name, LEAD, text or "(no output)", kind="result")
+            return text
+
+        results = []
+        for block in response.content:
+            if getattr(block, "type", None) != "tool_use":
+                continue
+            tool_name = getattr(block, "name", "") or ""
+            tool_input = getattr(block, "input", None) or {}
+            if member.registry is None:
+                output = "Error: no tools available"
+            else:
+                output = member.registry.dispatch(tool_name, tool_input)
+            results.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": getattr(block, "id", None) or "toolu_unknown",
+                    "content": str(output),
+                }
+            )
+        member.messages.append({"role": "user", "content": results})
+        member.status = "idle"
+        return f"[{name}] ran {len(results)} tool call(s)"
+
+    def run_round(self) -> list[str]:
+        """Step every unfinished member once, in spawn order."""
+        outcomes = []
+        for member in list(self.members.values()):
+            if member.status in ("done", "error"):
+                continue
+            outcomes.append(self.step(member.name))
+        return outcomes
+
+    def wait(self, max_rounds: int | None = None) -> dict[str, Any]:
+        """Run rounds until every member is done or the round cap is hit."""
+        limit = self.max_rounds if max_rounds is None else max_rounds
+        rounds = 0
+        while rounds < limit:
+            pending = [
+                member
+                for member in self.members.values()
+                if member.status not in ("done", "error")
+            ]
+            if not pending:
+                break
+            progressed = False
+            for member in pending:
+                if not member.messages and not self._mailboxes.get(member.name):
+                    continue
+                self.step(member.name)
+                progressed = True
+            if not progressed:
+                break
+            rounds += 1
+        return {
+            "rounds": rounds,
+            "done": [
+                member.name
+                for member in self.members.values()
+                if member.status == "done"
+            ],
+            "pending": [
+                member.name
+                for member in self.members.values()
+                if member.status not in ("done", "error")
+            ],
+            "results": {
+                member.name: member.result for member in self.members.values()
+            },
+        }
+
     def status(self) -> list[dict[str, Any]]:
         return [
             {
@@ -178,6 +284,19 @@ class TeamManager:
             except WorktreeError as exc:
                 raise TeamError(str(exc)) from exc
             member.worktree = None
+
+    def _append_user(self, member: TeamMember, text: str) -> None:
+        if member.messages and member.messages[-1]["role"] == "user":
+            last = member.messages[-1]["content"]
+            if isinstance(last, str):
+                member.messages[-1] = {
+                    "role": "user",
+                    "content": f"{last}\n\n{text}",
+                }
+            else:
+                last.append({"type": "text", "text": text})
+            return
+        member.messages.append({"role": "user", "content": text})
 
     def _build_registry(self, member: TeamMember) -> Any:
         if self._tool_factory is not None:
@@ -219,3 +338,16 @@ class TeamManager:
         if name == LEAD:
             return
         self._get_member(name)
+
+
+def _extract_text(content: list[Any]) -> str:
+    parts = []
+    for block in content:
+        text = getattr(block, "text", None)
+        if text is not None:
+            parts.append(text)
+    return "\n".join(parts)
+
+
+def _format_incoming(message: TeamMessage) -> str:
+    return f"{message.sender} ({message.kind}): {message.content}"

@@ -117,6 +117,93 @@ def test_status_reports_members_and_unread_count(tmp_path: Path) -> None:
     assert status[0]["unread"] == 1
 
 
+def test_step_marks_done_and_reports_to_lead(tmp_path: Path) -> None:
+    client = MockLLMClient()
+    client.add_text_response("done fixing")
+    team = TeamManager(client, tmp_path)
+    team.spawn("alice", "role", task="fix it")
+
+    result = team.step("alice")
+
+    assert result == "done fixing"
+    assert team.members["alice"].status == "done"
+    lead_mail = team.inbox("lead")
+    assert [(m.sender, m.kind, m.content) for m in lead_mail] == [
+        ("alice", "result", "done fixing")
+    ]
+
+
+def test_step_executes_tool_batch_then_finishes(tmp_path: Path) -> None:
+    client = MockLLMClient()
+    client.add_tool_use_response("write", {"path": "note.txt", "content": "hi"})
+    client.add_text_response("written")
+    team = TeamManager(client, tmp_path)
+    team.spawn("alice", "role", task="write a note")
+
+    first = team.step("alice")
+
+    assert "1 tool call" in first
+    assert (tmp_path / "note.txt").read_text(encoding="utf-8") == "hi"
+    assert team.members["alice"].status == "idle"
+
+    assert team.step("alice") == "written"
+    assert team.members["alice"].status == "done"
+
+
+def test_wait_collects_results_from_all_members(tmp_path: Path) -> None:
+    client = MockLLMClient()
+    client.add_text_response("alice done")
+    client.add_text_response("bob done")
+    team = TeamManager(client, tmp_path)
+    team.spawn("alice", "role", task="fix a")
+    team.spawn("bob", "role", task="fix b")
+
+    summary = team.wait()
+
+    assert summary["rounds"] == 1
+    assert sorted(summary["done"]) == ["alice", "bob"]
+    assert summary["results"]["alice"] == "alice done"
+
+
+def test_wait_respects_round_cap(tmp_path: Path) -> None:
+    client = MockLLMClient()
+    for _ in range(6):
+        client.add_tool_use_response("bash", {"command": "echo tick"})
+    team = TeamManager(client, tmp_path, max_rounds=2)
+    team.spawn("alice", "role", task="loop forever")
+
+    summary = team.wait()
+
+    assert summary["rounds"] == 2
+    assert summary["done"] == []
+
+
+def test_wait_with_no_task_does_not_call_model(tmp_path: Path) -> None:
+    client = MockLLMClient()
+    team = TeamManager(client, tmp_path)
+    team.spawn("alice", "role")
+
+    summary = team.wait()
+
+    assert summary["rounds"] == 0
+    assert client._call_count == 0
+
+
+def test_step_records_client_error(tmp_path: Path) -> None:
+    class BrokenClient:
+        def chat(self, *args, **kwargs):
+            raise RuntimeError("boom")
+
+    team = TeamManager(BrokenClient(), tmp_path)
+    team.spawn("alice", "role", task="fail")
+
+    result = team.step("alice")
+
+    assert "boom" in result
+    assert team.members["alice"].status == "error"
+    assert team.inbox("lead")[0].kind == "result"
+
+
 @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 def test_shutdown_removes_worktree(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path / "repo")
