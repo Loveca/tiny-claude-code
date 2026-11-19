@@ -92,6 +92,53 @@ class WorktreeManager:
             )
         return worktrees
 
+    def remove(self, name: str, force: bool = False) -> None:
+        self._validate_name(name)
+        path = self.root / name
+        branch = self.branch_name(name)
+        found = False
+        if path.exists():
+            args = ["worktree", "remove"]
+            if force:
+                args.append("--force")
+            args.append(str(path))
+            self._git(*args)
+            found = True
+        else:
+            self._git("worktree", "prune", check=False)
+        if self._git("branch", "--list", branch).stdout.strip():
+            self._git("branch", "-D", branch)
+            found = True
+        if not found:
+            raise WorktreeError(f"worktree '{name}' does not exist")
+
+    def merge(self, name: str, message: str | None = None) -> str:
+        self._validate_name(name)
+        branch = self.branch_name(name)
+        if not self._git("branch", "--list", branch).stdout.strip():
+            return f"Error: worktree branch '{branch}' does not exist"
+        proc = self._git(
+            "merge",
+            "--no-ff",
+            "-m",
+            message or f"Merge {branch}",
+            branch,
+            check=False,
+        )
+        if proc.returncode != 0:
+            self._git("merge", "--abort", check=False)
+            detail = proc.stderr.strip() or proc.stdout.strip()
+            return f"Error: merge failed: {detail}"
+        return f"Merged {branch} into the main workspace."
+
+    def cleanup(self) -> None:
+        for entry in self.list():
+            try:
+                self.remove(entry["name"], force=True)
+            except WorktreeError:
+                continue
+        self._git("worktree", "prune", check=False)
+
     def _is_direct_child(self, path: Path) -> bool:
         try:
             return path.resolve().parent == self.root
