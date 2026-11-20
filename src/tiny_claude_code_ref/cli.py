@@ -3,6 +3,7 @@
 ch01: Implement main() — read user input, call agent_loop, print response.
 ch09: you will add /compact command handling.
 ch10: you will add --resume flag and /memory command.
+ch17: you will add /goal for budgeted autonomous runs.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import argparse
 import shlex
 import sys
 from pathlib import Path
+from typing import Any
 
 from tiny_claude_code_ref.agent import agent_loop
 from tiny_claude_code_ref.background import BackgroundManager
@@ -18,6 +20,7 @@ from tiny_claude_code_ref.compact import CompactManager
 from tiny_claude_code_ref.context import ContextManager
 from tiny_claude_code_ref.cron import CronScheduler
 from tiny_claude_code_ref.error_recovery import ErrorHandler
+from tiny_claude_code_ref.goal import GoalManager
 from tiny_claude_code_ref.hooks import HookSystem, StopLogHook, ToolLogHook
 from tiny_claude_code_ref.llm import LLMClient
 from tiny_claude_code_ref.memory import MemoryManager
@@ -127,18 +130,6 @@ def main(argv: list[str] | None = None) -> None:
         session_id = sessions.new_session_id()
         messages: list[dict] = []
 
-    tools = create_default_registry(
-        workspace,
-        client=client,
-        background_manager=background_manager,
-        cron_scheduler=cron_scheduler,
-        plugin_dir=workspace / args.plugins,
-    )
-    system = build_system_prompt(
-        workspace,
-        memory.build_system_context(),
-        skills.build_system_context(args.skill),
-    )
     hooks = HookSystem()
     permissions = PermissionManager(workspace=workspace)
     tool_log = ToolLogHook()
@@ -146,9 +137,30 @@ def main(argv: list[str] | None = None) -> None:
     error_handler = ErrorHandler()
     context_manager = ContextManager()
     compact_manager = CompactManager(archive_dir=sessions.session_dir / "archives")
+    goal_manager = GoalManager(
+        client,
+        hooks=hooks,
+        error_handler=error_handler,
+        context_manager=context_manager,
+        compact_manager=compact_manager,
+    )
     hooks.register("PreToolUse", permissions.as_hook, priority=100)
     hooks.register("PostToolUse", tool_log.post_tool_use)
     hooks.register("Stop", stop_log.stop)
+
+    tools = create_default_registry(
+        workspace,
+        client=client,
+        background_manager=background_manager,
+        cron_scheduler=cron_scheduler,
+        plugin_dir=workspace / args.plugins,
+        goal_manager=goal_manager,
+    )
+    system = build_system_prompt(
+        workspace,
+        memory.build_system_context(),
+        skills.build_system_context(args.skill),
+    )
 
     if args.task:
         messages.append({"role": "user", "content": " ".join(args.task)})
@@ -199,6 +211,14 @@ def main(argv: list[str] | None = None) -> None:
         if user_input.startswith("/skill"):
             print(handle_skill_command(skills, user_input))
             continue
+        if user_input.startswith("/goal"):
+            print(
+                handle_goal_command(
+                    goal_manager, tools, messages, system, user_input
+                )
+            )
+            sessions.save(session_id, messages, {"workspace": str(workspace)})
+            continue
 
         prompt_override = hooks.trigger(
             "UserPromptSubmit", prompt=user_input, messages=messages
@@ -248,6 +268,34 @@ def handle_skill_command(skills: SkillLoader, command: str) -> str:
     if len(parts) >= 3 and parts[1] == "show":
         return skills.load(parts[2])
     return 'Usage: /skill list or /skill show "name"'
+
+
+def handle_goal_command(
+    goal_manager: GoalManager,
+    tools: Any,
+    messages: list[dict],
+    system: str,
+    command: str,
+) -> str:
+    objective = command[len("/goal"):].strip()
+    if not objective:
+        status = goal_manager.status()
+        if status is None:
+            return "No goal has been started yet."
+        return (
+            f"Goal: {status['objective']}\n"
+            f"Status: {status['status']} "
+            f"({status['turns']}/{status['max_turns']} turns)\n"
+            f"Summary: {status['summary'] or '-'}\n"
+            f"Reason: {status['reason'] or '-'}"
+        )
+    result = goal_manager.run(messages, tools, objective, system=system)
+    lines = [f"Goal {result['status']} after {result['turns']} turn(s)."]
+    if result["summary"]:
+        lines.append(f"Summary: {result['summary']}")
+    if result["reason"]:
+        lines.append(f"Reason: {result['reason']}")
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":
