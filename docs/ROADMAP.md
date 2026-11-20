@@ -2,8 +2,9 @@
 
 ## 当前状态（2026-11）
 
-- ch01-ch15 全部发布：教材在 `chapters/src/`，参考实现在 `src/tiny_claude_code_ref/`，学生骨架在 `src/tiny_claude_code/`
+- ch01-ch17 全部发布：教材在 `chapters/src/`，参考实现在 `src/tiny_claude_code_ref/`，学生骨架在 `src/tiny_claude_code/`
 - 骨架与参考实现物理分离；每章都有对应的 mock LLM 测试，不需要 API key
+- Part 6 已启动：ch16 团队协作、ch17 goal loop 完成，ch18 MCP 与 ch19 workflow runtime 在计划中
 - 五个 Part 与两个 Checkpoint 的节奏与下文大纲一致
 - `python scripts/dev.py check` 用于确认骨架里还剩哪些 TODO
 
@@ -15,9 +16,10 @@
 |------|------|------|
 | 流式输出 | REPL 长回答不必等整段生成完，体验更接近真实产品 | 需要重写 CLI 渲染与 mock client 的事件模型 |
 | OpenAI 兼容适配层 | 让只提供 chat completions 的模型也能接入 | 在 `llm.py` 增加一层消息格式转换，测试面扩大 |
-| MCP 客户端支持 | 复用社区现成的工具生态，比手写插件更通用 | 引入协议层与进程管理，教学复杂度明显上升 |
 | 更强的 bash 沙箱 | 当前只有命令黑名单，教学定位下够用但不防误操作 | 需要 allowlist / 容器级隔离，偏离「读懂实现」的主线 |
 | 真实 tokenizer | 当前按字符数 / 4 估算，长上下文下误差不小 | 引入 tiktoken 类依赖，收益主要在工程化而非教学 |
+
+MCP 客户端已排入 Part 6（ch18），不再作为可选项。
 
 明确不做的方向：Web UI、多用户服务端、向量检索记忆。它们会把项目从「小型 agent 框架教材」推向应用开发，和当前定位冲突。
 
@@ -499,6 +501,54 @@ tiny-claude-code/
 - 无效插件 → 不崩溃，跳过并警告
 
 **验收**：`tiny-claude-code "使用 python-debugging skill 帮我调试"` — Agent 加载技能后给出更好的调试建议
+
+---
+
+### Part 6: Harness 扩展（ch16+）
+
+完成 Part 6 后，Agent 从单机助手变成可持续运行、可扩展的 harness。
+
+---
+
+#### ch16: 多 Agent 团队与 Worktree 隔离
+
+**概念**：subagent 是一次性委派，团队是留着继续用的协作关系。
+
+**学生实现**：
+- `team.py`：命名成员、邮箱协议（task / message / result）、确定性调度
+- `worktree.py`：git worktree 创建、删除、合并、清理
+- `tools/team.py`：TeamSpawn / TeamSend / TeamInbox / TeamWait / WorktreeMerge
+
+**验收**：lead 派两个成员分别改同一个仓库的两个文件，完成后合并回主工作区
+
+---
+
+#### ch17: Goal Loop
+
+**概念**：一次对话不等于一个目标 — 长任务需要预算、显式完成信号和进度日志。
+
+**学生实现**：
+- `goal.py`：`GoalManager.run()`，一轮一次模型调用；轮次预算与空转守卫
+- `tools/goal.py`：`GoalDone` 显式完成，`GoalCheckpoint` 记录可跨压缩的进度
+- `cli.py`：`/goal <objective>` 与 `/goal` 状态查询
+
+**验收**：`/goal` 让一个失败测试变绿，预算耗尽时状态为 `paused` 而不是报错
+
+---
+
+#### ch18: MCP 客户端（计划）
+
+**概念**：工具不必自己写 — 用标准协议接入社区工具服务。
+
+**计划实现**：stdio 连接、工具发现、把 MCP tool 包装成现有 `Tool`、与本地插件共用一个注册表。
+
+---
+
+#### ch19: Workflow Runtime（计划）
+
+**概念**：把 goal loop、subagent、background/cron 编排成可重复执行的流程。
+
+**计划实现**：声明式步骤图、触发与重试、人工审批节点、运行记录。
 
 ---
 

@@ -19,3 +19,4 @@
 - [ch14: Real Project Challenge](./ch14-real-project-challenge.md)
 - [ch15: Skills and Plugins](./ch15-skills-plugins.md)
 - [ch16: Multi-Agent Teams and Worktrees](./ch16-teams-worktree.md)
+- [ch17: Goal Loop](./ch17-goal-loop.md)
