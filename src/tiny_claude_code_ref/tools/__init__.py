@@ -44,6 +44,7 @@ def create_default_registry(
     cron_scheduler: Any = None,
     plugin_dir: str | Path | None = None,
     team_manager: Any = None,
+    goal_manager: Any = None,
 ) -> ToolRegistry:
     from tiny_claude_code_ref.background import (
         BackgroundManager,
@@ -53,6 +54,7 @@ def create_default_registry(
     from tiny_claude_code_ref.subagent import SubAgentTool
     from tiny_claude_code_ref.tasks import TaskManager, TodoWriteTool
     from tiny_claude_code_ref.cron import CronScheduler, CronScheduleTool
+    from tiny_claude_code_ref.tools.goal import GoalCheckpointTool, GoalDoneTool
     from tiny_claude_code_ref.tools.plugin import PluginLoader
     from tiny_claude_code_ref.tools.team import (
         TeamInboxTool,
@@ -76,6 +78,9 @@ def create_default_registry(
     registry.register(BackgroundSubmitTool(background_manager))
     registry.register(BackgroundPollTool(background_manager))
     registry.register(CronScheduleTool(cron_scheduler))
+    if goal_manager is not None:
+        registry.register(GoalDoneTool(goal_manager))
+        registry.register(GoalCheckpointTool(goal_manager))
     if team_manager is not None:
         lead = team_manager.LEAD
         registry.register(TeamSpawnTool(team_manager))
@@ -114,6 +119,8 @@ __all__ = [
     "TeamWaitTool",
     "TeamShutdownTool",
     "WorktreeMergeTool",
+    "GoalDoneTool",
+    "GoalCheckpointTool",
     "create_default_registry",
 ]
 
@@ -161,5 +168,9 @@ def __getattr__(name: str) -> Any:
         from tiny_claude_code_ref.tools import team as team_tools
 
         return getattr(team_tools, name)
+    if name in {"GoalDoneTool", "GoalCheckpointTool"}:
+        from tiny_claude_code_ref.tools import goal as goal_tools
+
+        return getattr(goal_tools, name)
     raise AttributeError(name)
 
