@@ -4,11 +4,13 @@ ch01: Implement main() — read user input, call agent_loop, print response.
 ch09: you will add /compact command handling.
 ch10: you will add --resume flag and /memory command.
 ch17: you will add /goal for budgeted autonomous runs.
+ch18: you will add --mcp to load tools from an MCP server.
 """
 
 from __future__ import annotations
 
 import argparse
+import atexit
 import shlex
 import sys
 from pathlib import Path
@@ -23,6 +25,7 @@ from tiny_claude_code_ref.error_recovery import ErrorHandler
 from tiny_claude_code_ref.goal import GoalManager
 from tiny_claude_code_ref.hooks import HookSystem, StopLogHook, ToolLogHook
 from tiny_claude_code_ref.llm import LLMClient
+from tiny_claude_code_ref.mcp import MCPClient, MCPError
 from tiny_claude_code_ref.memory import MemoryManager
 from tiny_claude_code_ref.permissions import PermissionManager
 from tiny_claude_code_ref.session import SessionManager
@@ -107,6 +110,10 @@ def main(argv: list[str] | None = None) -> None:
         help="Directory containing Python tool plugins",
     )
     parser.add_argument(
+        "--mcp",
+        help='MCP server command, e.g. --mcp "python examples/mcp/echo_server.py"',
+    )
+    parser.add_argument(
         "task",
         nargs="*",
         help="Optional task to execute directly (non-interactive mode)",
@@ -148,6 +155,8 @@ def main(argv: list[str] | None = None) -> None:
     hooks.register("PostToolUse", tool_log.post_tool_use)
     hooks.register("Stop", stop_log.stop)
 
+    mcp_client = _start_mcp_client(args.mcp)
+
     tools = create_default_registry(
         workspace,
         client=client,
@@ -155,6 +164,7 @@ def main(argv: list[str] | None = None) -> None:
         cron_scheduler=cron_scheduler,
         plugin_dir=workspace / args.plugins,
         goal_manager=goal_manager,
+        mcp_client=mcp_client,
     )
     system = build_system_prompt(
         workspace,
@@ -179,6 +189,9 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     print(f"tiny-claude-code — working in {workspace}")
+    if mcp_client is not None:
+        server = mcp_client.server_info.get("name", "unknown")
+        print(f"MCP server: {server}")
     print('Type /exit to quit, or pass a task directly: tiny-claude-code "your task"')
     while True:
         try:
@@ -268,6 +281,23 @@ def handle_skill_command(skills: SkillLoader, command: str) -> str:
     if len(parts) >= 3 and parts[1] == "show":
         return skills.load(parts[2])
     return 'Usage: /skill list or /skill show "name"'
+
+
+def _start_mcp_client(spec: str | None) -> MCPClient | None:
+    if not spec:
+        return None
+    parts = shlex.split(spec)
+    if not parts:
+        print("MCP: empty server command", file=sys.stderr)
+        return None
+    client = MCPClient(command=parts[0], args=parts[1:])
+    try:
+        client.start()
+    except MCPError as exc:
+        print(f"MCP server failed to start: {exc}", file=sys.stderr)
+        return None
+    atexit.register(client.close)
+    return client
 
 
 def handle_goal_command(
