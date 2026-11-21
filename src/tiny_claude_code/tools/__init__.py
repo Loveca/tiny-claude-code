@@ -23,9 +23,9 @@ class ToolRegistry:
     def dispatch(self, name: str, tool_input: dict[str, Any]) -> str:
         raise NotImplementedError('TODO: implement dispatch')
 
-def create_default_registry(workspace: str | Path | None=None, client: Any=None, task_manager: Any=None, background_manager: Any=None, cron_scheduler: Any=None, plugin_dir: str | Path | None=None, team_manager: Any=None, goal_manager: Any=None) -> ToolRegistry:
+def create_default_registry(workspace: str | Path | None=None, client: Any=None, task_manager: Any=None, background_manager: Any=None, cron_scheduler: Any=None, plugin_dir: str | Path | None=None, team_manager: Any=None, goal_manager: Any=None, mcp_client: Any=None) -> ToolRegistry:
     raise NotImplementedError('TODO: implement create_default_registry')
-__all__ = ['Tool', 'ToolRegistry', 'ShellTool', 'ReadTool', 'WriteTool', 'SearchTool', 'TaskManager', 'TodoWriteTool', 'SubAgentTool', 'BackgroundManager', 'BackgroundSubmitTool', 'BackgroundPollTool', 'CronScheduler', 'CronScheduleTool', 'PluginLoader', 'TeamSpawnTool', 'TeamSendTool', 'TeamInboxTool', 'TeamStatusTool', 'TeamWaitTool', 'TeamShutdownTool', 'WorktreeMergeTool', 'GoalDoneTool', 'GoalCheckpointTool', 'create_default_registry']
+__all__ = ['Tool', 'ToolRegistry', 'ShellTool', 'ReadTool', 'WriteTool', 'SearchTool', 'TaskManager', 'TodoWriteTool', 'SubAgentTool', 'BackgroundManager', 'BackgroundSubmitTool', 'BackgroundPollTool', 'CronScheduler', 'CronScheduleTool', 'PluginLoader', 'TeamSpawnTool', 'TeamSendTool', 'TeamInboxTool', 'TeamStatusTool', 'TeamWaitTool', 'TeamShutdownTool', 'WorktreeMergeTool', 'GoalDoneTool', 'GoalCheckpointTool', 'MCPTool', 'load_mcp_tools', 'create_default_registry']
 
 def __getattr__(name: str) -> Any:
     raise NotImplementedError('TODO: implement __getattr__')
