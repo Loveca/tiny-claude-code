@@ -2,9 +2,9 @@
 
 ## 当前状态（2026-11）
 
-- ch01-ch17 全部发布：教材在 `chapters/src/`，参考实现在 `src/tiny_claude_code_ref/`，学生骨架在 `src/tiny_claude_code/`
+- ch01-ch18 全部发布：教材在 `chapters/src/`，参考实现在 `src/tiny_claude_code_ref/`，学生骨架在 `src/tiny_claude_code/`
 - 骨架与参考实现物理分离；每章都有对应的 mock LLM 测试，不需要 API key
-- Part 6 已启动：ch16 团队协作、ch17 goal loop 完成，ch18 MCP 与 ch19 workflow runtime 在计划中
+- Part 6 进展：ch16 团队协作、ch17 goal loop、ch18 MCP 客户端完成，ch19 workflow runtime 在计划中
 - 五个 Part 与两个 Checkpoint 的节奏与下文大纲一致
 - `python scripts/dev.py check` 用于确认骨架里还剩哪些 TODO
 
@@ -19,7 +19,7 @@
 | 更强的 bash 沙箱 | 当前只有命令黑名单，教学定位下够用但不防误操作 | 需要 allowlist / 容器级隔离，偏离「读懂实现」的主线 |
 | 真实 tokenizer | 当前按字符数 / 4 估算，长上下文下误差不小 | 引入 tiktoken 类依赖，收益主要在工程化而非教学 |
 
-MCP 客户端已排入 Part 6（ch18），不再作为可选项。
+MCP 客户端已在 ch18 发布，不再作为可选项。
 
 明确不做的方向：Web UI、多用户服务端、向量检索记忆。它们会把项目从「小型 agent 框架教材」推向应用开发，和当前定位冲突。
 
@@ -47,7 +47,10 @@ tiny-claude-code/
 │   │   │   ├── shell.py            # ch02: bash tool
 │   │   │   ├── file_read.py        # ch03: read / list
 │   │   │   ├── file_write.py       # ch03: write / edit
-│   │   │   └── search.py           # ch03: glob / grep
+│   │   │   ├── search.py           # ch03: glob / grep
+│   │   │   ├── team.py             # ch16: 团队工具
+│   │   │   ├── goal.py             # ch17: GoalDone / GoalCheckpoint
+│   │   │   └── mcp.py              # ch18: MCP tool 适配器
 │   │   ├── permissions.py          # ch05: 三层权限闸门
 │   │   ├── hooks.py                # ch06: Hook 事件系统
 │   │   ├── error_recovery.py       # ch07: 重试与降级
@@ -59,7 +62,11 @@ tiny-claude-code/
 │   │   ├── subagent.py             # ch12: 子 Agent
 │   │   ├── background.py           # ch13: 后台任务
 │   │   ├── cron.py                 # ch13: 定时调度
-│   │   └── skills.py               # ch15: Skill 加载
+│   │   ├── skills.py               # ch15: Skill 加载
+│   │   ├── team.py                 # ch16: 团队与邮箱
+│   │   ├── worktree.py             # ch16: worktree 隔离
+│   │   ├── goal.py                 # ch17: goal loop
+│   │   └── mcp.py                  # ch18: MCP 客户端
 │   └── tiny_claude_code_ref/       # 参考实现（同结构，完整代码）
 ├── tests_all/                      # 全部章节测试（仓库持有）
 │   ├── test_ch01.py
@@ -536,11 +543,16 @@ tiny-claude-code/
 
 ---
 
-#### ch18: MCP 客户端（计划）
+#### ch18: MCP 客户端
 
 **概念**：工具不必自己写 — 用标准协议接入社区工具服务。
 
-**计划实现**：stdio 连接、工具发现、把 MCP tool 包装成现有 `Tool`、与本地插件共用一个注册表。
+**学生实现**：
+- `mcp.py`：`MCPClient` 握手与 JSON-RPC 请求；`StdioTransport` 子进程 + 读线程 + 超时
+- `tools/mcp.py`：把 `tools/list` 的定义适配成现有 `Tool`
+- `cli.py`：`--mcp "<command>"`；示例服务 `examples/mcp/echo_server.py`
+
+**验收**：接上示例服务，让 agent 通过 `tools/call` 获得结果；服务端日志误写 stdout 时能看到可读错误
 
 ---
 
