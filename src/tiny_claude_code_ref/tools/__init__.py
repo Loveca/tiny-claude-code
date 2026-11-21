@@ -45,6 +45,7 @@ def create_default_registry(
     plugin_dir: str | Path | None = None,
     team_manager: Any = None,
     goal_manager: Any = None,
+    mcp_client: Any = None,
 ) -> ToolRegistry:
     from tiny_claude_code_ref.background import (
         BackgroundManager,
@@ -55,6 +56,7 @@ def create_default_registry(
     from tiny_claude_code_ref.tasks import TaskManager, TodoWriteTool
     from tiny_claude_code_ref.cron import CronScheduler, CronScheduleTool
     from tiny_claude_code_ref.tools.goal import GoalCheckpointTool, GoalDoneTool
+    from tiny_claude_code_ref.tools.mcp import load_mcp_tools
     from tiny_claude_code_ref.tools.plugin import PluginLoader
     from tiny_claude_code_ref.tools.team import (
         TeamInboxTool,
@@ -92,6 +94,9 @@ def create_default_registry(
         registry.register(WorktreeMergeTool(team_manager))
     if client is not None:
         registry.register(SubAgentTool(client=client, tools=registry))
+    if mcp_client is not None:
+        for tool in load_mcp_tools(mcp_client):
+            registry.register(tool)
     PluginLoader(plugin_dir).load_plugins(registry)
     return registry
 
@@ -121,6 +126,8 @@ __all__ = [
     "WorktreeMergeTool",
     "GoalDoneTool",
     "GoalCheckpointTool",
+    "MCPTool",
+    "load_mcp_tools",
     "create_default_registry",
 ]
 
@@ -172,5 +179,9 @@ def __getattr__(name: str) -> Any:
         from tiny_claude_code_ref.tools import goal as goal_tools
 
         return getattr(goal_tools, name)
+    if name in {"MCPTool", "load_mcp_tools"}:
+        from tiny_claude_code_ref.tools import mcp as mcp_tools
+
+        return getattr(mcp_tools, name)
     raise AttributeError(name)
 
