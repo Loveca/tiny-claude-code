@@ -46,6 +46,7 @@ def create_default_registry(
     team_manager: Any = None,
     goal_manager: Any = None,
     mcp_client: Any = None,
+    workflow_manager: Any = None,
 ) -> ToolRegistry:
     from tiny_claude_code_ref.background import (
         BackgroundManager,
@@ -66,6 +67,11 @@ def create_default_registry(
         TeamStatusTool,
         TeamWaitTool,
         WorktreeMergeTool,
+    )
+    from tiny_claude_code_ref.tools.workflow import (
+        WorkflowApproveTool,
+        WorkflowRunTool,
+        WorkflowStatusTool,
     )
 
     registry = ToolRegistry()
@@ -97,6 +103,10 @@ def create_default_registry(
     if mcp_client is not None:
         for tool in load_mcp_tools(mcp_client):
             registry.register(tool)
+    if workflow_manager is not None:
+        registry.register(WorkflowRunTool(workflow_manager, registry))
+        registry.register(WorkflowStatusTool(workflow_manager))
+        registry.register(WorkflowApproveTool(workflow_manager, registry))
     PluginLoader(plugin_dir).load_plugins(registry)
     return registry
 
@@ -128,6 +138,9 @@ __all__ = [
     "GoalCheckpointTool",
     "MCPTool",
     "load_mcp_tools",
+    "WorkflowRunTool",
+    "WorkflowStatusTool",
+    "WorkflowApproveTool",
     "create_default_registry",
 ]
 
@@ -183,5 +196,9 @@ def __getattr__(name: str) -> Any:
         from tiny_claude_code_ref.tools import mcp as mcp_tools
 
         return getattr(mcp_tools, name)
+    if name in {"WorkflowRunTool", "WorkflowStatusTool", "WorkflowApproveTool"}:
+        from tiny_claude_code_ref.tools import workflow as workflow_tools
+
+        return getattr(workflow_tools, name)
     raise AttributeError(name)
 
