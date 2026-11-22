@@ -31,6 +31,11 @@ from tiny_claude_code_ref.permissions import PermissionManager
 from tiny_claude_code_ref.session import SessionManager
 from tiny_claude_code_ref.skills import SkillLoader
 from tiny_claude_code_ref.tools import create_default_registry
+from tiny_claude_code_ref.workflow import (
+    WorkflowError,
+    WorkflowManager,
+    format_run_result,
+)
 
 
 SYSTEM_PROMPT = (
@@ -110,6 +115,11 @@ def main(argv: list[str] | None = None) -> None:
         help="Directory containing Python tool plugins",
     )
     parser.add_argument(
+        "--workflows",
+        default=".tiny-claude-code/workflows",
+        help="Directory containing JSON workflow definitions",
+    )
+    parser.add_argument(
         "--mcp",
         help='MCP server command, e.g. --mcp "python examples/mcp/echo_server.py"',
     )
@@ -156,6 +166,19 @@ def main(argv: list[str] | None = None) -> None:
     hooks.register("Stop", stop_log.stop)
 
     mcp_client = _start_mcp_client(args.mcp)
+    system = build_system_prompt(
+        workspace,
+        memory.build_system_context(),
+        skills.build_system_context(args.skill),
+    )
+    workflow_manager = WorkflowManager(
+        client,
+        workspace=workspace,
+        system=system,
+        hooks=hooks,
+        error_handler=error_handler,
+    )
+    workflow_names = workflow_manager.load_definitions(workspace / args.workflows)
 
     tools = create_default_registry(
         workspace,
@@ -165,11 +188,7 @@ def main(argv: list[str] | None = None) -> None:
         plugin_dir=workspace / args.plugins,
         goal_manager=goal_manager,
         mcp_client=mcp_client,
-    )
-    system = build_system_prompt(
-        workspace,
-        memory.build_system_context(),
-        skills.build_system_context(args.skill),
+        workflow_manager=workflow_manager,
     )
 
     if args.task:
@@ -192,6 +211,8 @@ def main(argv: list[str] | None = None) -> None:
     if mcp_client is not None:
         server = mcp_client.server_info.get("name", "unknown")
         print(f"MCP server: {server}")
+    if workflow_names:
+        print(f"Workflows: {', '.join(workflow_names)}")
     print('Type /exit to quit, or pass a task directly: tiny-claude-code "your task"')
     while True:
         try:
@@ -231,6 +252,9 @@ def main(argv: list[str] | None = None) -> None:
                 )
             )
             sessions.save(session_id, messages, {"workspace": str(workspace)})
+            continue
+        if user_input.startswith("/workflow"):
+            print(handle_workflow_command(workflow_manager, tools, user_input))
             continue
 
         prompt_override = hooks.trigger(
@@ -326,6 +350,37 @@ def handle_goal_command(
     if result["reason"]:
         lines.append(f"Reason: {result['reason']}")
     return "\n".join(lines)
+
+
+def handle_workflow_command(
+    workflow_manager: WorkflowManager, tools: Any, command: str
+) -> str:
+    parts = shlex.split(command)
+    try:
+        if len(parts) >= 2 and parts[1] == "status":
+            result = workflow_manager.status(parts[2] if len(parts) >= 3 else None)
+            return format_run_result(result) if result else "No workflow runs yet."
+        if len(parts) >= 4 and parts[1] == "approve":
+            decision = parts[3].lower()
+            if decision not in ("approve", "deny"):
+                return "Decision must be 'approve' or 'deny'."
+            result = workflow_manager.approve(
+                parts[2],
+                tools,
+                approved=decision == "approve",
+                comment=" ".join(parts[4:]),
+            )
+            return format_run_result(result)
+        if len(parts) >= 3 and parts[1] == "resume":
+            return format_run_result(workflow_manager.resume(parts[2], tools))
+        if len(parts) >= 2:
+            return format_run_result(workflow_manager.run(parts[1], tools))
+    except WorkflowError as exc:
+        return f"Error: {exc}"
+    return (
+        "Usage: /workflow <name> | /workflow status [run_id] | "
+        "/workflow approve <run_id> approve|deny [comment] | /workflow resume <run_id>"
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,31 @@
+{
+  "name": "release-notes",
+  "description": "Summarize the latest commits into release notes, wait for sign-off, then write NOTES.md",
+  "steps": [
+    {
+      "id": "collect",
+      "type": "tool",
+      "tool": "shell",
+      "input": {"command": "git log --oneline -5"}
+    },
+    {
+      "id": "draft",
+      "type": "agent",
+      "prompt": "Turn these commit titles into concise release notes:\n\n{outputs.collect}",
+      "depends_on": ["collect"]
+    },
+    {
+      "id": "signoff",
+      "type": "approval",
+      "message": "Write these release notes to NOTES.md?",
+      "depends_on": ["draft"]
+    },
+    {
+      "id": "publish",
+      "type": "tool",
+      "tool": "write",
+      "input": {"path": "NOTES.md", "content": "{outputs.draft}"},
+      "depends_on": ["signoff"]
+    }
+  ]
+}
