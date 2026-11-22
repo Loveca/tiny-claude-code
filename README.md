@@ -157,7 +157,7 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 | Part 3 | ch08-ch10 | Context budget, `/compact`, sessions, memory |
 | Part 4 | ch11-ch13 | Todo system, subagents, background tasks, cron |
 | Part 5 | ch14-ch15 | Real project challenge, skills, plugins |
-| Part 6 | ch16+ | Multi-agent teams, worktree isolation, goal loops, MCP tools, and further harness extensions |
+| Part 6 | ch16-ch19 | Multi-agent teams, worktree isolation, goal loops, MCP tools, and a workflow runtime |
 
 Released chapters:
 
@@ -179,6 +179,7 @@ Released chapters:
 - ch16: Multi-agent teams and worktree isolation
 - ch17: Goal loop
 - ch18: MCP client
+- ch19: Workflow runtime with approval gates
 
 Chapter material lives in [chapters/src/](./chapters/src).
 

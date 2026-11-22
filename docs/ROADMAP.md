@@ -2,9 +2,9 @@
 
 ## 当前状态（2026-11）
 
-- ch01-ch18 全部发布：教材在 `chapters/src/`，参考实现在 `src/tiny_claude_code_ref/`，学生骨架在 `src/tiny_claude_code/`
+- ch01-ch19 全部发布：教材在 `chapters/src/`，参考实现在 `src/tiny_claude_code_ref/`，学生骨架在 `src/tiny_claude_code/`
 - 骨架与参考实现物理分离；每章都有对应的 mock LLM 测试，不需要 API key
-- Part 6 进展：ch16 团队协作、ch17 goal loop、ch18 MCP 客户端完成，ch19 workflow runtime 在计划中
+- Part 6 全部完成：ch16 团队协作、ch17 goal loop、ch18 MCP 客户端、ch19 workflow runtime
 - 五个 Part 与两个 Checkpoint 的节奏与下文大纲一致
 - `python scripts/dev.py check` 用于确认骨架里还剩哪些 TODO
 
@@ -50,7 +50,8 @@ tiny-claude-code/
 │   │   │   ├── search.py           # ch03: glob / grep
 │   │   │   ├── team.py             # ch16: 团队工具
 │   │   │   ├── goal.py             # ch17: GoalDone / GoalCheckpoint
-│   │   │   └── mcp.py              # ch18: MCP tool 适配器
+│   │   │   ├── mcp.py              # ch18: MCP tool 适配器
+│   │   │   └── workflow.py         # ch19: WorkflowRun / Status / Approve
 │   │   ├── permissions.py          # ch05: 三层权限闸门
 │   │   ├── hooks.py                # ch06: Hook 事件系统
 │   │   ├── error_recovery.py       # ch07: 重试与降级
@@ -66,7 +67,8 @@ tiny-claude-code/
 │   │   ├── team.py                 # ch16: 团队与邮箱
 │   │   ├── worktree.py             # ch16: worktree 隔离
 │   │   ├── goal.py                 # ch17: goal loop
-│   │   └── mcp.py                  # ch18: MCP 客户端
+│   │   ├── mcp.py                  # ch18: MCP 客户端
+│   │   └── workflow.py             # ch19: workflow 运行时
 │   └── tiny_claude_code_ref/       # 参考实现（同结构，完整代码）
 ├── tests_all/                      # 全部章节测试（仓库持有）
 │   ├── test_ch01.py
@@ -511,7 +513,7 @@ tiny-claude-code/
 
 ---
 
-### Part 6: Harness 扩展（ch16+）
+### Part 6: Harness 扩展（ch16-ch19）
 
 完成 Part 6 后，Agent 从单机助手变成可持续运行、可扩展的 harness。
 
@@ -556,11 +558,16 @@ tiny-claude-code/
 
 ---
 
-#### ch19: Workflow Runtime（计划）
+#### ch19: Workflow Runtime
 
-**概念**：把 goal loop、subagent、background/cron 编排成可重复执行的流程。
+**概念**：把 goal loop、subagent、background/cron 编排成可重复执行的流程 — 控制流交给引擎，模型只填步骤。
 
-**计划实现**：声明式步骤图、触发与重试、人工审批节点、运行记录。
+**学生实现**：
+- `workflow.py`：定义解析校验（DAG/环/字段）、确定性调度、重试、审批暂停与恢复、运行记录落盘
+- `tools/workflow.py`：WorkflowRun / WorkflowStatus / WorkflowApprove
+- `cli.py`：`/workflow` 命令与 `--workflows` 定义目录；示例 `examples/workflows/release_notes.json`
+
+**验收**：`/workflow release-notes` 跑到审批暂停，approve 后 NOTES.md 出现在主工作区；deny 时剩余步骤为 `skipped`
 
 ---
 
