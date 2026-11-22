@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import os
 import sys
 from dataclasses import dataclass, field
@@ -16,6 +17,42 @@ if os.environ.get("TINY_CLAUDE_CODE_TEST_TARGET") == "ref":
     # Run the chapter tests against the reference implementation.
     sys.path.insert(0, str(Path(__file__).parent / "src"))
     sys.modules["tiny_claude_code"] = importlib.import_module("tiny_claude_code_ref")
+
+    class _RefAliasLoader:
+        """Reuse an already-imported ref module instead of executing it again."""
+
+        def __init__(self, module: object) -> None:
+            self.module = module
+
+        def create_module(self, spec: object) -> object:
+            return self.module
+
+        def exec_module(self, module: object) -> None:
+            pass
+
+    class _RefAliasFinder:
+        """Map ``tiny_claude_code.*`` imports onto ``tiny_claude_code_ref.*``.
+
+        Without this, ``tiny_claude_code.workflow`` executes the ref file a
+        second time, producing duplicate classes from the same source — so an
+        ``except SomeError`` in ref code would not catch the aliased twin.
+        """
+
+        def find_spec(self, fullname: str, path=None, target=None):
+            if not fullname.startswith("tiny_claude_code."):
+                return None
+            ref_name = "tiny_claude_code_ref" + fullname[len("tiny_claude_code"):]
+            try:
+                module = importlib.import_module(ref_name)
+            except ModuleNotFoundError:
+                return None
+            return importlib.util.spec_from_loader(
+                fullname,
+                _RefAliasLoader(module),
+                is_package=hasattr(module, "__path__"),
+            )
+
+    sys.meta_path.insert(0, _RefAliasFinder())
 
 
 @dataclass
