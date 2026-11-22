@@ -2,8 +2,9 @@
 
 ch19: the engine owns control flow; the model only fills ``agent`` steps.
 ``tool`` steps reuse the registry and its ``Error: ...`` failure convention,
-``agent`` steps run one bounded agent_loop, and every state change is
-persisted so a run can be inspected and continued later.
+``agent`` steps run one bounded agent_loop, ``approval`` steps pause the run
+until a human approves or denies, and every state change is persisted so a
+run can be inspected and continued later.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from tiny_claude_code_ref.agent import agent_loop
 
 AGENT_STEP_TURNS = 4
 NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-STEP_TYPES = ("tool", "agent")
+STEP_TYPES = ("tool", "agent", "approval")
 
 
 class WorkflowError(RuntimeError):
@@ -48,7 +49,7 @@ class WorkflowDef:
 
 @dataclass
 class StepRecord:
-    status: str = "pending"  # pending|running|done|failed|skipped
+    status: str = "pending"  # pending|running|done|failed|skipped|waiting
     attempts: int = 0
     output: str = ""
     error: str = ""
@@ -58,7 +59,7 @@ class StepRecord:
 class WorkflowRun:
     run_id: str
     name: str
-    status: str = "running"  # running|done|failed
+    status: str = "running"  # running|waiting_approval|done|failed|denied
     steps: dict[str, StepRecord] = field(default_factory=dict)
     reason: str = ""
     created_at: str = ""
@@ -241,6 +242,46 @@ class WorkflowManager:
         self._save(record)
         return self._drive(definition, record, registry)
 
+    def resume(self, run_id: str, registry: Any) -> dict[str, Any]:
+        """Continue a run left in ``running`` state by an interrupted process."""
+        record = self._load(run_id)
+        if record.status != "running":
+            raise WorkflowError(f"run '{run_id}' is {record.status}, not resumable")
+        definition = self._definition_for(record)
+        return self._drive(definition, record, registry)
+
+    def approve(
+        self,
+        run_id: str,
+        registry: Any,
+        *,
+        approved: bool,
+        comment: str = "",
+    ) -> dict[str, Any]:
+        """Resolve the waiting approval step and continue (or stop) the run."""
+        record = self._load(run_id)
+        if record.status != "waiting_approval":
+            raise WorkflowError(
+                f"run '{run_id}' is {record.status}, not waiting for approval"
+            )
+        definition = self._definition_for(record)
+        waiting = self._waiting_step(record)
+        if approved:
+            record.steps[waiting].status = "done"
+            record.steps[waiting].output = comment or "approved"
+            self._save(record)
+            record.status = "running"
+            return self._drive(definition, record, registry)
+        record.steps[waiting].status = "skipped"
+        record.steps[waiting].error = comment or "denied"
+        for rec in record.steps.values():
+            if rec.status == "pending":
+                rec.status = "skipped"
+        record.status = "denied"
+        record.reason = comment or "denied by approver"
+        self._save(record)
+        return self._result(record)
+
     def status(self, run_id: str | None = None) -> dict[str, Any] | None:
         """Return the result dict of a run, or of the latest run."""
         if run_id is None:
@@ -285,6 +326,11 @@ class WorkflowManager:
                     continue
                 if any(dep.status != "done" for dep in deps):
                     continue
+                if step.type == "approval":
+                    rec.status = "waiting"
+                    record.status = "waiting_approval"
+                    self._save(record)
+                    break
                 self._execute(step, rec, record, registry)
                 progressed = True
                 self._save(record)
@@ -369,6 +415,23 @@ class WorkflowManager:
         record = WorkflowRun.from_dict(data)
         self.runs[run_id] = record
         return record
+
+    def _definition_for(self, record: WorkflowRun) -> WorkflowDef:
+        definition = self.definitions.get(record.name)
+        if definition is None:
+            raise WorkflowError(
+                f"unknown workflow '{record.name}': cannot continue run '{record.run_id}'"
+            )
+        self.validate(definition)
+        return definition
+
+    def _waiting_step(self, record: WorkflowRun) -> str:
+        waiting = [sid for sid, rec in record.steps.items() if rec.status == "waiting"]
+        if len(waiting) != 1:
+            raise WorkflowError(
+                f"run '{record.run_id}' has no single waiting approval step"
+            )
+        return waiting[0]
 
     def _result(self, record: WorkflowRun) -> dict[str, Any]:
         return {

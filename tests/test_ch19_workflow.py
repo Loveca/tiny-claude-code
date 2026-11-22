@@ -416,3 +416,154 @@ def test_format_run_result_renders_steps_and_reason():
     assert "reason: step 'a' failed" in text
     assert "a: failed (attempts 2)" in text
     assert "b: pending (attempts 0)" in text
+
+
+GATED_DEF = WorkflowDef(
+    name="gated",
+    steps=[
+        WorkflowStep(id="collect", type="tool", tool="echo", input={"text": "a"}),
+        WorkflowStep(
+            id="signoff",
+            type="approval",
+            message="Publish these notes?",
+            depends_on=["collect"],
+        ),
+        WorkflowStep(
+            id="publish",
+            type="tool",
+            tool="echo",
+            input={"text": "published {outputs.collect}"},
+            depends_on=["signoff"],
+        ),
+    ],
+)
+
+
+def test_approval_pauses_then_approve_completes(tmp_path):
+    echo = EchoTool()
+    manager = make_manager(tmp_path)
+    manager.register_definition(GATED_DEF)
+
+    paused = manager.run("gated", make_registry(echo))
+
+    assert paused["status"] == "waiting_approval"
+    assert paused["steps"]["collect"]["status"] == "done"
+    assert paused["steps"]["signoff"]["status"] == "waiting"
+    assert paused["steps"]["publish"]["status"] == "pending"
+    assert [call["text"] for call in echo.calls] == ["a"]
+
+    result = manager.approve(
+        paused["run_id"], make_registry(echo), approved=True, comment="lgtm"
+    )
+
+    assert result["status"] == "done"
+    assert result["steps"]["signoff"]["status"] == "done"
+    assert result["steps"]["signoff"]["output"] == "lgtm"
+    assert result["steps"]["publish"]["output"] == "echo:published echo:a"
+
+
+def test_deny_skips_the_rest_of_the_run(tmp_path):
+    echo = EchoTool()
+    manager = make_manager(tmp_path)
+    manager.register_definition(GATED_DEF)
+
+    paused = manager.run("gated", make_registry(echo))
+    result = manager.approve(
+        paused["run_id"], make_registry(echo), approved=False, comment="not yet"
+    )
+
+    assert result["status"] == "denied"
+    assert result["reason"] == "not yet"
+    assert result["steps"]["signoff"]["status"] == "skipped"
+    assert result["steps"]["publish"]["status"] == "skipped"
+    assert [call["text"] for call in echo.calls] == ["a"]
+
+
+def test_approve_requires_a_waiting_run(tmp_path):
+    echo = EchoTool()
+    manager = make_manager(tmp_path)
+    manager.register_definition(GATED_DEF)
+
+    with pytest.raises(WorkflowError, match="unknown run 'ghost-00000000'"):
+        manager.approve("ghost-00000000", make_registry(echo), approved=True)
+
+    paused = manager.run("gated", make_registry(echo))
+    done = manager.approve(paused["run_id"], make_registry(echo), approved=True)
+    with pytest.raises(WorkflowError, match="not waiting for approval"):
+        manager.approve(done["run_id"], make_registry(echo), approved=True)
+
+
+def test_approval_survives_a_manager_restart(tmp_path):
+    echo = EchoTool()
+    first = make_manager(tmp_path)
+    first.register_definition(GATED_DEF)
+    paused = first.run("gated", make_registry(echo))
+
+    second = make_manager(tmp_path)
+    second.register_definition(GATED_DEF)
+    result = second.approve(
+        paused["run_id"], make_registry(echo), approved=True, comment="ship it"
+    )
+
+    assert result["status"] == "done"
+    assert result["steps"]["signoff"]["output"] == "ship it"
+    assert result["steps"]["publish"]["output"] == "echo:published echo:a"
+
+
+def test_resume_continues_an_interrupted_run(tmp_path):
+    echo = EchoTool()
+    manager = make_manager(tmp_path)
+    manager.register_definition(
+        WorkflowDef(
+            name="half",
+            steps=[
+                WorkflowStep(id="a", type="tool", tool="echo", input={"text": "hello"}),
+                WorkflowStep(
+                    id="b",
+                    type="tool",
+                    tool="echo",
+                    input={"text": "after {outputs.a}"},
+                    depends_on=["a"],
+                ),
+            ],
+        )
+    )
+    runs_dir = tmp_path / ".tiny-claude-code" / "workflows" / "runs"
+    runs_dir.mkdir(parents=True)
+    (runs_dir / "half-abcd1234.json").write_text(
+        json.dumps(
+            {
+                "run_id": "half-abcd1234",
+                "name": "half",
+                "status": "running",
+                "reason": "",
+                "created_at": "2026-11-22T08:00:00+00:00",
+                "steps": {
+                    "a": {
+                        "status": "done",
+                        "attempts": 1,
+                        "output": "echo:hello",
+                        "error": "",
+                    },
+                    "b": {"status": "pending", "attempts": 0, "output": "", "error": ""},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = manager.resume("half-abcd1234", make_registry(echo))
+
+    assert result["status"] == "done"
+    assert result["steps"]["b"]["output"] == "echo:after echo:hello"
+
+
+def test_resume_rejects_terminal_runs(tmp_path):
+    echo = EchoTool()
+    manager = make_manager(tmp_path)
+    manager.register_definition(GATED_DEF)
+    result = manager.run("gated", make_registry(echo))
+
+    assert result["status"] == "waiting_approval"
+    with pytest.raises(WorkflowError, match="not resumable"):
+        manager.resume(result["run_id"], make_registry(echo))
