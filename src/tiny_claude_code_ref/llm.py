@@ -11,6 +11,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -267,5 +268,88 @@ def openai_response_to_anthropic(data: dict[str, Any]) -> ChatResponse:
     else:
         stop_reason = "end_turn"
     return ChatResponse(content=blocks, stop_reason=stop_reason)
+
+
+DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+
+
+def _http_transport(
+    url: str, headers: dict[str, str], payload: dict[str, Any]
+) -> dict[str, Any]:
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:500]
+        raise OpenAIError(
+            f"chat completions request failed ({exc.code}): {body}",
+            status_code=exc.code,
+            headers=dict(exc.headers or {}),
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise OpenAIError(f"chat completions connection failed: {exc.reason}") from exc
+
+
+class OpenAICompatibleClient:
+    """Talk to any server that implements OpenAI-style chat completions.
+
+    ch20: converts Anthropic-shaped messages/tools on the way out and turns
+    the reply back into the TextBlock/ToolUseBlock shape agent_loop reads.
+    """
+
+    def __init__(
+        self,
+        *,
+        model: str | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        transport: Callable[[str, dict[str, str], dict[str, Any]], dict[str, Any]]
+        | None = None,
+    ) -> None:
+        self.model = model or os.environ.get("MODEL_ID") or DEFAULT_OPENAI_MODEL
+        self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
+        base = (
+            base_url
+            or os.environ.get("OPENAI_BASE_URL")
+            or DEFAULT_OPENAI_BASE_URL
+        )
+        self.endpoint = base.rstrip("/") + "/chat/completions"
+        self.transport = transport or _http_transport
+
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        max_tokens: int = 8000,
+        system: str | None = None,
+    ) -> ChatResponse:
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "messages": anthropic_messages_to_openai(messages, system),
+        }
+        if tools:
+            payload["tools"] = anthropic_tools_to_openai(tools)
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        data = self.transport(self.endpoint, headers, payload)
+        return openai_response_to_anthropic(data)
+
+
+def create_client() -> LLMClient | OpenAICompatibleClient:
+    """Pick a client from ``LLM_PROVIDER`` (default: ``anthropic``)."""
+    provider = os.environ.get("LLM_PROVIDER", "anthropic").strip().lower()
+    if provider == "openai":
+        return OpenAICompatibleClient()
+    return LLMClient()
 
 
