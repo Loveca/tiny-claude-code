@@ -24,7 +24,7 @@ from tiny_claude_code_ref.cron import CronScheduler
 from tiny_claude_code_ref.error_recovery import ErrorHandler
 from tiny_claude_code_ref.goal import GoalManager
 from tiny_claude_code_ref.hooks import HookSystem, StopLogHook, ToolLogHook
-from tiny_claude_code_ref.llm import LLMClient
+from tiny_claude_code_ref.llm import create_client
 from tiny_claude_code_ref.mcp import MCPClient, MCPError
 from tiny_claude_code_ref.memory import MemoryManager
 from tiny_claude_code_ref.permissions import PermissionManager
@@ -131,7 +131,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     workspace = Path(args.workspace).resolve()
-    client = LLMClient()
+    client = create_client()
     sessions = SessionManager(workspace)
     memory = MemoryManager(workspace)
     skills = SkillLoader(workspace)
