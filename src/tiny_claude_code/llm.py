@@ -1,13 +1,32 @@
 """LLM client wrapper — communicates with the Anthropic API.
 
 ch01: Implement LLMClient.chat() to wrap the Anthropic SDK call.
+ch20: add a chat-completions client plus the conversion layer that lets the
+same agent run against OpenAI-compatible providers.
 """
 from __future__ import annotations
+import json
 import os
+import urllib.error
+import urllib.request
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 import anthropic
 from dotenv import load_dotenv
 load_dotenv()
+
+class OpenAIError(RuntimeError):
+    """Raised when a chat completions request fails.
+
+    ``status_code`` and ``headers`` mirror the attributes ErrorHandler reads,
+    so provider errors get the same retry treatment as Anthropic errors.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None=None, headers: dict[str, Any] | None=None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.headers = headers or {}
 
 class LLMClient:
     """Wrapper around the Anthropic API client.
@@ -41,3 +60,90 @@ class LLMClient:
         ch07: you will come back here to add ErrorHandler retry logic.
         """
         raise NotImplementedError('TODO: implement chat')
+
+@dataclass
+class TextBlock:
+    """Mimics an Anthropic TextBlock returned by the adapter."""
+    type: str='text'
+    text: str=''
+
+@dataclass
+class ToolUseBlock:
+    """Mimics an Anthropic ToolUseBlock returned by the adapter."""
+    type: str='tool_use'
+    id: str=''
+    name: str=''
+    input: Any=None
+
+@dataclass
+class ChatResponse:
+    """Mimics an Anthropic Message: the attributes agent_loop reads."""
+    content: list[Any]=field(default_factory=list)
+    stop_reason: str='end_turn'
+
+def anthropic_messages_to_openai(messages: list[dict[str, Any]], system: str | None=None) -> list[dict[str, Any]]:
+    """Convert Anthropic-shaped messages into chat completions messages.
+
+    ch20: string content passes through untouched. An assistant turn joins its
+    text blocks into ``content`` and turns tool_use blocks into ``tool_calls``
+    (arguments as a JSON string). A user turn emits one ``tool`` message per
+    tool_result block, then any trailing text as a final user message — and no
+    user message at all when there is no text.
+    """
+    raise NotImplementedError('TODO: implement anthropic_messages_to_openai')
+
+def anthropic_tools_to_openai(tools: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Convert Anthropic tool schemas into chat completions function tools."""
+    raise NotImplementedError('TODO: implement anthropic_tools_to_openai')
+
+def openai_response_to_anthropic(data: dict[str, Any]) -> ChatResponse:
+    """Convert a chat completions response into the shape the loop reads.
+
+    ch20: map content and tool_calls onto TextBlock/ToolUseBlock, translate
+    finish_reason into stop_reason, and turn unparsable arguments into
+    ``input=None`` so agent_loop can answer with a malformed-block error.
+    """
+    raise NotImplementedError('TODO: implement openai_response_to_anthropic')
+
+DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1'
+DEFAULT_OPENAI_MODEL = 'gpt-4o-mini'
+
+def _http_transport(url: str, headers: dict[str, str], payload: dict[str, Any]) -> dict[str, Any]:
+    """POST the payload and return the decoded JSON body.
+
+    ch20: wrap HTTPError in OpenAIError with ``status_code`` and response
+    ``headers``; a connection failure carries no status code.
+    """
+    raise NotImplementedError('TODO: implement _http_transport')
+
+class OpenAICompatibleClient:
+    """Talk to any server that implements OpenAI-style chat completions.
+
+    ch20: converts Anthropic-shaped messages/tools on the way out and turns
+    the reply back into the TextBlock/ToolUseBlock shape agent_loop reads.
+    """
+
+    def __init__(self, *, model: str | None=None, api_key: str | None=None, base_url: str | None=None, transport: Callable[[str, dict[str, str], dict[str, Any]], dict[str, Any]] | None=None) -> None:
+        """Resolve model, key and endpoint.
+
+        Read from environment variables:
+        - MODEL_ID: model ID (default: gpt-4o-mini)
+        - OPENAI_API_KEY: bearer token
+        - OPENAI_BASE_URL: service root (default: https://api.openai.com/v1)
+
+        Derive ``endpoint`` as the base with a trailing slash stripped plus
+        ``/chat/completions``; keep ``transport`` injectable for tests.
+        """
+        raise NotImplementedError('TODO: implement __init__')
+
+    def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None=None, max_tokens: int=8000, system: str | None=None) -> ChatResponse:
+        """Send messages to a chat completions server and adapt the reply.
+
+        ch20: build ``{model, max_tokens, messages}``, add ``tools`` when given,
+        call the transport with a Bearer header, then adapt the response.
+        """
+        raise NotImplementedError('TODO: implement chat')
+
+def create_client() -> LLMClient | OpenAICompatibleClient:
+    """Pick a client from ``LLM_PROVIDER`` (default: ``anthropic``)."""
+    raise NotImplementedError('TODO: implement create_client')
