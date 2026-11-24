@@ -12,7 +12,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -95,6 +95,62 @@ class LLMClient:
         if system:
             kwargs["system"] = system
         return self.client.messages.create(**kwargs)
+
+    def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        max_tokens: int = 8000,
+        system: str | None = None,
+    ) -> Iterator[Any]:
+        """Send messages and yield the turn as stream events.
+
+        ch21: the SDK hands back raw SSE events. Translate them here so the
+        rest of the harness only ever sees TextDelta / ToolUseStart /
+        ToolUseArgsDelta / MessageStop.
+        """
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "messages": messages,
+            "stream": True,
+        }
+        if tools:
+            kwargs["tools"] = tools
+        if system:
+            kwargs["system"] = system
+
+        stop_reason = "end_turn"
+        stopped = False
+        for event in self.client.messages.create(**kwargs):
+            kind = getattr(event, "type", None)
+            if kind == "content_block_start":
+                block = getattr(event, "content_block", None)
+                if getattr(block, "type", None) == "tool_use":
+                    yield ToolUseStart(
+                        id=getattr(block, "id", "") or "",
+                        name=getattr(block, "name", "") or "",
+                    )
+            elif kind == "content_block_delta":
+                delta = getattr(event, "delta", None)
+                delta_type = getattr(delta, "type", None)
+                if delta_type == "text_delta":
+                    yield TextDelta(text=getattr(delta, "text", "") or "")
+                elif delta_type == "input_json_delta":
+                    yield ToolUseArgsDelta(
+                        partial_json=getattr(delta, "partial_json", "") or ""
+                    )
+            elif kind == "message_delta":
+                delta = getattr(event, "delta", None)
+                reason = getattr(delta, "stop_reason", None)
+                if reason:
+                    stop_reason = reason
+            elif kind == "message_stop":
+                stopped = True
+                yield MessageStop(stop_reason=stop_reason)
+        if not stopped:
+            # A truncated stream still has to close the turn.
+            yield MessageStop(stop_reason=stop_reason)
 
 
 @dataclass
