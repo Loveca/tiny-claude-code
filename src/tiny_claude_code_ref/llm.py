@@ -160,6 +160,86 @@ class MessageStop:
     stop_reason: str = "end_turn"
 
 
+def _parse_tool_arguments(raw: str) -> Any:
+    """Turn accumulated argument text into the dict agent_loop expects.
+
+    Empty text means "no arguments" (``{}``); unparsable text becomes ``None``
+    so the loop answers with a malformed-block error instead of crashing.
+    """
+    if not raw.strip():
+        return {}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+class StreamAccumulator:
+    """Glue streamed deltas back into the ChatResponse shape.
+
+    The loop only knows ``content`` blocks and ``stop_reason``, so streaming
+    needs a place where fragments become blocks again. Feed every event in
+    order and read the result once the stream ends.
+    """
+
+    def __init__(self) -> None:
+        self.blocks: list[Any] = []
+        self.stop_reason = "end_turn"
+        self._pending: dict[str, Any] | None = None
+
+    def feed(self, event: Any) -> None:
+        kind = getattr(event, "type", None)
+        if kind == "text_delta":
+            self._append_text(getattr(event, "text", "") or "")
+        elif kind == "tool_use_start":
+            self._start_tool(
+                getattr(event, "id", "") or "", getattr(event, "name", "") or ""
+            )
+        elif kind == "tool_use_args_delta":
+            if self._pending is not None:
+                self._pending["parts"].append(getattr(event, "partial_json", "") or "")
+        elif kind == "message_stop":
+            reason = getattr(event, "stop_reason", "") or ""
+            if reason:
+                self.stop_reason = reason
+            self._close_tool()
+
+    def response(self) -> ChatResponse:
+        self._close_tool()
+        if self.stop_reason == "end_turn" and any(
+            isinstance(block, ToolUseBlock) for block in self.blocks
+        ):
+            # A stream that ended without a stop event still asked for tools.
+            self.stop_reason = "tool_use"
+        return ChatResponse(content=list(self.blocks), stop_reason=self.stop_reason)
+
+    def _append_text(self, text: str) -> None:
+        if not text:
+            return
+        if self.blocks and isinstance(self.blocks[-1], TextBlock):
+            self.blocks[-1].text += text
+        else:
+            self.blocks.append(TextBlock(text=text))
+
+    def _start_tool(self, tool_id: str, name: str) -> None:
+        if self._pending is not None and tool_id and self._pending["block"].id == tool_id:
+            # Servers may repeat the start to deliver the rest of the name.
+            if name:
+                self._pending["block"].name = name
+            return
+        self._close_tool()
+        block = ToolUseBlock(id=tool_id, name=name)
+        self.blocks.append(block)
+        self._pending = {"block": block, "parts": []}
+
+    def _close_tool(self) -> None:
+        if self._pending is None:
+            return
+        block = self._pending["block"]
+        block.input = _parse_tool_arguments("".join(self._pending["parts"]))
+        self._pending = None
+
+
 def _field(block: Any, name: str, default: Any = None) -> Any:
     if isinstance(block, dict):
         return block.get(name, default)
