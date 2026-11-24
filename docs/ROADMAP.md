@@ -2,9 +2,10 @@
 
 ## 当前状态（2026-11）
 
-- ch01-ch19 全部发布：教材在 `chapters/src/`，参考实现在 `src/tiny_claude_code_ref/`，学生骨架在 `src/tiny_claude_code/`
+- ch01-ch20 全部发布：教材在 `chapters/src/`，参考实现在 `src/tiny_claude_code_ref/`，学生骨架在 `src/tiny_claude_code/`
 - 骨架与参考实现物理分离；每章都有对应的 mock LLM 测试，不需要 API key
 - Part 6 全部完成：ch16 团队协作、ch17 goal loop、ch18 MCP 客户端、ch19 workflow runtime
+- 扩展章节：ch20 OpenAI 兼容适配层（`LLM_PROVIDER=openai`，换模型服务不改 harness）
 - 五个 Part 与两个 Checkpoint 的节奏与下文大纲一致
 - `python scripts/dev.py check` 用于确认骨架里还剩哪些 TODO
 
@@ -15,11 +16,10 @@
 | 方向 | 动机 | 代价 |
 |------|------|------|
 | 流式输出 | REPL 长回答不必等整段生成完，体验更接近真实产品 | 需要重写 CLI 渲染与 mock client 的事件模型 |
-| OpenAI 兼容适配层 | 让只提供 chat completions 的模型也能接入 | 在 `llm.py` 增加一层消息格式转换，测试面扩大 |
 | 更强的 bash 沙箱 | 当前只有命令黑名单，教学定位下够用但不防误操作 | 需要 allowlist / 容器级隔离，偏离「读懂实现」的主线 |
 | 真实 tokenizer | 当前按字符数 / 4 估算，长上下文下误差不小 | 引入 tiktoken 类依赖，收益主要在工程化而非教学 |
 
-MCP 客户端已在 ch18 发布，不再作为可选项。
+MCP 客户端已在 ch18 发布，OpenAI 兼容适配层已在 ch20 发布，都不再作为可选项。
 
 明确不做的方向：Web UI、多用户服务端、向量检索记忆。它们会把项目从「小型 agent 框架教材」推向应用开发，和当前定位冲突。
 
@@ -40,7 +40,7 @@ tiny-claude-code/
 │   │   ├── __init__.py
 │   │   ├── agent.py                # ch01: agent_loop
 │   │   ├── cli.py                  # ch01: REPL 入口
-│   │   ├── llm.py                  # ch01: Anthropic client 封装
+│   │   ├── llm.py                  # ch01: Anthropic client 封装 / ch20: provider 适配层
 │   │   ├── tools/
 │   │   │   ├── __init__.py         # ch04: ToolRegistry
 │   │   │   ├── base.py             # ch04: Tool 抽象基类
@@ -568,6 +568,26 @@ tiny-claude-code/
 - `cli.py`：`/workflow` 命令与 `--workflows` 定义目录；示例 `examples/workflows/release_notes.json`
 
 **验收**：`/workflow release-notes` 跑到审批暂停，approve 后 NOTES.md 出现在主工作区；deny 时剩余步骤为 `skipped`
+
+---
+
+### 扩展章节（ch20）
+
+不属于 Part 1-6 的主线，放在最后作为可移植性扩展。
+
+---
+
+#### ch20: OpenAI 兼容适配层
+
+**概念**：harness 只依赖 Anthropic 形状的消息（`content` 块 + `stop_reason`），所以换模型服务只需要在 boundary 上做一次转换，agent loop、hooks、context、session 全都不用动。
+
+**学生实现**：
+- `llm.py`：`anthropic_messages_to_openai` / `anthropic_tools_to_openai` / `openai_response_to_anthropic` 三个纯函数
+- `OpenAICompatibleClient.chat()`：stdlib `urllib.request` 发 chat completions 请求，transport 可注入
+- `create_client()`：按 `LLM_PROVIDER` 选客户端；`cli.py` 改用它
+- `OpenAIError` 带 `status_code` / `headers`，直接复用 ch07 的重试策略
+
+**验收**：接本地 Ollama（`OPENAI_BASE_URL=http://localhost:11434/v1`）或 DeepSeek 跑通一次工具调用；用 A provider 建的会话能 `--resume` 后在 B provider 继续
 
 ---
 

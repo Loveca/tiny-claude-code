@@ -4,7 +4,7 @@
 
 用一周时间，从零实现一个 Claude Code 风格的 Coding Agent。
 
-`tiny-claude-code` 是一个面向开发者的 Python AI Coding Agent 教程。它会带你拆开 Claude Code、Codex、Cursor 这类 LLM 编程助手背后的核心机制：agent loop、tool calling、shell 工具、文件读写、权限控制、hooks、上下文压缩、记忆、任务系统、subagent、后台任务和插件扩展。
+`tiny-claude-code` 是一个面向开发者的 Python AI Coding Agent 教程。它会带你拆开 Claude Code、Codex、Cursor 这类 LLM 编程助手背后的核心机制：agent loop、tool calling、shell 工具、文件读写、权限控制、hooks、上下文压缩、记忆、任务系统、subagent、后台任务、插件扩展和多模型接入。
 
 [快速开始](#快速开始) | [课程路线](#课程路线) | [路线图](./docs/ROADMAP.md)
 
@@ -27,6 +27,7 @@
 - `tool_use` 和 `tool_result` 消息怎么流转
 - 如何给 AI 编程助手增加 shell、文件工具、记忆、hooks、subagent 和插件
 - 如何不花 LLM API 费用也能测试 agent 行为
+- 如何把同一个 agent 接到 OpenAI 兼容的模型服务
 
 ## 核心预览
 
@@ -141,6 +142,17 @@ MODEL_ID=deepseek-v4-flash
 ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 ```
 
+只提供 OpenAI-compatible chat completions 的服务，可以直接用 ch20 内置的适配层：
+
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your-key
+OPENAI_BASE_URL=https://api.openai.com/v1
+MODEL_ID=gpt-4o-mini
+```
+
+OpenAI、DeepSeek、Ollama、vLLM 这类 chat completions 服务都不需要改 agent 代码。
+
 ## 课程路线
 
 | 阶段 | 章节 | 你会实现什么 |
@@ -152,6 +164,7 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 | Part 4 | ch11-ch13 | Todo 系统、subagent、后台任务、cron |
 | Part 5 | ch14-ch15 | 真实项目挑战、skills、plugins |
 | Part 6 | ch16-ch19 | 多 agent 团队、worktree 隔离、goal 循环、MCP 工具、workflow 运行时 |
+| 扩展 | ch20 | OpenAI 兼容适配层：换模型服务不改 harness |
 
 已发布章节：
 
@@ -174,6 +187,7 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 - ch17: Goal loop
 - ch18: MCP client
 - ch19: Workflow runtime with approval gates
+- ch20: OpenAI 兼容适配层
 
 章节材料在 [chapters/src/](./chapters/src)。
 
@@ -236,7 +250,7 @@ tiny-claude-code/
 
 ### 能用 DeepSeek、Kimi、GLM 或其他模型吗？
 
-默认客户端使用 Anthropic SDK 和 Anthropic Messages API 格式。兼容该格式的服务可以通过 `ANTHROPIC_BASE_URL` 使用。只提供 OpenAI-compatible chat completions 的服务，需要在 `llm.py` 里写一个小适配器。
+默认客户端使用 Anthropic SDK 和 Anthropic Messages API 格式。兼容该格式的服务可以通过 `ANTHROPIC_BASE_URL` 使用。只提供 OpenAI-compatible chat completions 的服务，用 ch20 的内置适配层即可：设置 `LLM_PROVIDER=openai`，再配 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL`。
 
 ### 为什么不用 LangChain 这类框架？
 

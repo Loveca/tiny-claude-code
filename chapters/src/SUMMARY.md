@@ -22,3 +22,4 @@
 - [ch17: Goal Loop](./ch17-goal-loop.md)
 - [ch18: MCP Client](./ch18-mcp.md)
 - [ch19: Workflow Runtime](./ch19-workflow-runtime.md)
+- [ch20: OpenAI 兼容适配层](./ch20-openai-provider.md)

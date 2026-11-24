@@ -4,7 +4,7 @@
 
 Build a Claude Code-style coding agent in one week.
 
-`tiny-claude-code` is a 15-chapter Python AI coding agent tutorial for developers who want to understand how tools like Claude Code, Codex, Cursor, and other LLM coding assistants work under the hood: the agent loop, tool calling, shell commands, file access, permission checks, hooks, context compaction, memory, tasks, subagents, background jobs, and plugins.
+`tiny-claude-code` is a 20-chapter Python AI coding agent tutorial for developers who want to understand how tools like Claude Code, Codex, Cursor, and other LLM coding assistants work under the hood: the agent loop, tool calling, shell commands, file access, permission checks, hooks, context compaction, memory, tasks, subagents, background jobs, plugins, and provider portability.
 
 [Quick Start](#quick-start) | [Curriculum](#curriculum) | [Roadmap](./docs/ROADMAP.md)
 
@@ -147,6 +147,17 @@ MODEL_ID=deepseek-v4-flash
 ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 ```
 
+Providers that only expose OpenAI-compatible chat completions work through the built-in adapter from ch20:
+
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your-key
+OPENAI_BASE_URL=https://api.openai.com/v1
+MODEL_ID=gpt-4o-mini
+```
+
+OpenAI, DeepSeek, Ollama, vLLM, and other chat completions servers need no agent code changes.
+
 ## Curriculum
 
 | Part | Chapters | What you build |
@@ -158,6 +169,7 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 | Part 4 | ch11-ch13 | Todo system, subagents, background tasks, cron |
 | Part 5 | ch14-ch15 | Real project challenge, skills, plugins |
 | Part 6 | ch16-ch19 | Multi-agent teams, worktree isolation, goal loops, MCP tools, and a workflow runtime |
+| Extension | ch20 | OpenAI-compatible provider adapter |
 
 Released chapters:
 
@@ -180,6 +192,7 @@ Released chapters:
 - ch17: Goal loop
 - ch18: MCP client
 - ch19: Workflow runtime with approval gates
+- ch20: OpenAI-compatible provider adapter
 
 Chapter material lives in [chapters/src/](./chapters/src).
 
@@ -256,7 +269,7 @@ No API key is needed for chapter tests. The tests use a mock LLM client. You onl
 
 ### Can I use this with OpenAI, DeepSeek, Kimi, GLM, or other models?
 
-The default client uses the Anthropic SDK and Anthropic Messages API shape. Compatible providers can work through `ANTHROPIC_BASE_URL`. Providers that only expose OpenAI-compatible chat completions need a small adapter in `llm.py`.
+The default client uses the Anthropic SDK and Anthropic Messages API shape. Compatible providers can work through `ANTHROPIC_BASE_URL`. Providers that only expose OpenAI-compatible chat completions are handled by the adapter built in ch20: set `LLM_PROVIDER=openai` plus `OPENAI_API_KEY` and `OPENAI_BASE_URL`.
 
 ### Why not use LangChain or another agent framework?
 
