@@ -1,8 +1,9 @@
-﻿"""LLM client wrapper — communicates with the Anthropic API.
+"""LLM client wrapper — communicates with the Anthropic API.
 
 ch01: Implement LLMClient.chat() to wrap the Anthropic SDK call.
 ch20: add a chat-completions client plus the conversion layer that lets the
 same agent run against OpenAI-compatible providers.
+ch21: stream a turn as deltas instead of waiting for the whole message.
 """
 
 from __future__ import annotations
@@ -119,6 +120,43 @@ class ChatResponse:
     """Mimics an Anthropic Message: the attributes agent_loop reads."""
 
     content: list[Any] = field(default_factory=list)
+    stop_reason: str = "end_turn"
+
+
+@dataclass
+class TextDelta:
+    """A chunk of assistant text produced while streaming."""
+
+    type: str = "text_delta"
+    text: str = ""
+
+
+@dataclass
+class ToolUseStart:
+    """A tool call began; its arguments arrive in later deltas."""
+
+    type: str = "tool_use_start"
+    id: str = ""
+    name: str = ""
+
+
+@dataclass
+class ToolUseArgsDelta:
+    """A fragment of the JSON-encoded tool arguments.
+
+    Neither API guarantees a fragment is valid JSON on its own, so deltas are
+    only meaningful once concatenated.
+    """
+
+    type: str = "tool_use_args_delta"
+    partial_json: str = ""
+
+
+@dataclass
+class MessageStop:
+    """The turn ended and reported why."""
+
+    type: str = "message_stop"
     stop_reason: str = "end_turn"
 
 
