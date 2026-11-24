@@ -471,6 +471,47 @@ def _http_transport(
         raise OpenAIError(f"chat completions connection failed: {exc.reason}") from exc
 
 
+def _stream_stop_reason(finish_reason: str) -> str:
+    """Map a chat completions finish_reason onto the harness vocabulary."""
+    if finish_reason == "tool_calls":
+        return "tool_use"
+    if finish_reason == "length":
+        return "max_tokens"
+    return "end_turn"
+
+
+def _http_stream_transport(
+    url: str, headers: dict[str, str], payload: dict[str, Any]
+) -> Iterator[dict[str, Any]]:
+    """POST the payload and yield one decoded object per SSE ``data:`` line."""
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={**headers, "Accept": "text/event-stream"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            for raw_line in response:
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[len("data:") :].strip()
+                if data == "[DONE]":
+                    break
+                if data:
+                    yield json.loads(data)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:500]
+        raise OpenAIError(
+            f"chat completions request failed ({exc.code}): {body}",
+            status_code=exc.code,
+            headers=dict(exc.headers or {}),
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise OpenAIError(f"chat completions connection failed: {exc.reason}") from exc
+
+
 class OpenAICompatibleClient:
     """Talk to any server that implements OpenAI-style chat completions.
 
@@ -486,6 +527,10 @@ class OpenAICompatibleClient:
         base_url: str | None = None,
         transport: Callable[[str, dict[str, str], dict[str, Any]], dict[str, Any]]
         | None = None,
+        stream_transport: Callable[
+            [str, dict[str, str], dict[str, Any]], Iterator[dict[str, Any]]
+        ]
+        | None = None,
     ) -> None:
         self.model = model or os.environ.get("MODEL_ID") or DEFAULT_OPENAI_MODEL
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
@@ -496,6 +541,7 @@ class OpenAICompatibleClient:
         )
         self.endpoint = base.rstrip("/") + "/chat/completions"
         self.transport = transport or _http_transport
+        self.stream_transport = stream_transport or _http_stream_transport
 
     def chat(
         self,
@@ -517,6 +563,58 @@ class OpenAICompatibleClient:
         }
         data = self.transport(self.endpoint, headers, payload)
         return openai_response_to_anthropic(data)
+
+    def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        max_tokens: int = 8000,
+        system: str | None = None,
+    ) -> Iterator[Any]:
+        """Send messages and yield the turn as stream events.
+
+        ch21: chat completions streams ``choices[0].delta``; tool calls arrive
+        as fragments keyed by ``index``, so the first fragment opens the call
+        and later ones only append argument text.
+        """
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "messages": anthropic_messages_to_openai(messages, system),
+            "stream": True,
+        }
+        if tools:
+            payload["tools"] = anthropic_tools_to_openai(tools)
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+        }
+
+        started: dict[int, bool] = {}
+        stop_reason = "end_turn"
+        for chunk in self.stream_transport(self.endpoint, headers, payload):
+            for choice in chunk.get("choices") or []:
+                delta = choice.get("delta") or {}
+                text = delta.get("content")
+                if isinstance(text, str) and text:
+                    yield TextDelta(text=text)
+                for call in delta.get("tool_calls") or []:
+                    index = int(call.get("index") or 0)
+                    function = call.get("function") or {}
+                    name = function.get("name") or ""
+                    if not started.get(index) and (call.get("id") or name):
+                        started[index] = True
+                        yield ToolUseStart(
+                            id=str(call.get("id") or f"call_{index}"), name=name
+                        )
+                    arguments = function.get("arguments")
+                    if arguments:
+                        yield ToolUseArgsDelta(partial_json=str(arguments))
+                finish_reason = choice.get("finish_reason")
+                if finish_reason:
+                    stop_reason = _stream_stop_reason(finish_reason)
+        yield MessageStop(stop_reason=stop_reason)
 
 
 def create_client() -> LLMClient | OpenAICompatibleClient:
