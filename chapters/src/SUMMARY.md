@@ -23,3 +23,4 @@
 - [ch18: MCP Client](./ch18-mcp.md)
 - [ch19: Workflow Runtime](./ch19-workflow-runtime.md)
 - [ch20: OpenAI 兼容适配层](./ch20-openai-provider.md)
+- [ch21: 流式输出](./ch21-streaming.md)
