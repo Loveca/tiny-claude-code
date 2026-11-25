@@ -4,7 +4,7 @@
 
 用一周时间，从零实现一个 Claude Code 风格的 Coding Agent。
 
-`tiny-claude-code` 是一个面向开发者的 Python AI Coding Agent 教程。它会带你拆开 Claude Code、Codex、Cursor 这类 LLM 编程助手背后的核心机制：agent loop、tool calling、shell 工具、文件读写、权限控制、hooks、上下文压缩、记忆、任务系统、subagent、后台任务、插件扩展和多模型接入。
+`tiny-claude-code` 是一个面向开发者的 Python AI Coding Agent 教程。它会带你拆开 Claude Code、Codex、Cursor 这类 LLM 编程助手背后的核心机制：agent loop、tool calling、shell 工具、文件读写、权限控制、hooks、上下文压缩、记忆、任务系统、subagent、后台任务、插件扩展、多模型接入和流式输出。
 
 [快速开始](#快速开始) | [课程路线](#课程路线) | [路线图](./docs/ROADMAP.md)
 
@@ -153,6 +153,14 @@ MODEL_ID=gpt-4o-mini
 
 OpenAI、DeepSeek、Ollama、vLLM 这类 chat completions 服务都不需要改 agent 代码。
 
+加上 ch21 的 `--stream` 开关，助手文本会边生成边打印，两种 provider 都适用：
+
+```bash
+python scripts/dev.py run --ref -- --stream "用一句话说明这个仓库是做什么的"
+```
+
+流式的轮次不做重试，所以它是一个可选开关，默认路径保持不变。
+
 ## 课程路线
 
 | 阶段 | 章节 | 你会实现什么 |
@@ -164,7 +172,7 @@ OpenAI、DeepSeek、Ollama、vLLM 这类 chat completions 服务都不需要改 
 | Part 4 | ch11-ch13 | Todo 系统、subagent、后台任务、cron |
 | Part 5 | ch14-ch15 | 真实项目挑战、skills、plugins |
 | Part 6 | ch16-ch19 | 多 agent 团队、worktree 隔离、goal 循环、MCP 工具、workflow 运行时 |
-| 扩展 | ch20 | OpenAI 兼容适配层：换模型服务不改 harness |
+| 扩展 | ch20-ch21 | OpenAI 兼容适配层：换模型服务不改 harness；流式输出 |
 
 已发布章节：
 
@@ -188,6 +196,7 @@ OpenAI、DeepSeek、Ollama、vLLM 这类 chat completions 服务都不需要改 
 - ch18: MCP client
 - ch19: Workflow runtime with approval gates
 - ch20: OpenAI 兼容适配层
+- ch21: 流式输出（`--stream`）
 
 章节材料在 [chapters/src/](./chapters/src)。
 
@@ -251,6 +260,10 @@ tiny-claude-code/
 ### 能用 DeepSeek、Kimi、GLM 或其他模型吗？
 
 默认客户端使用 Anthropic SDK 和 Anthropic Messages API 格式。兼容该格式的服务可以通过 `ANTHROPIC_BASE_URL` 使用。只提供 OpenAI-compatible chat completions 的服务，用 ch20 的内置适配层即可：设置 `LLM_PROVIDER=openai`，再配 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL`。
+
+### 回答是流式输出的吗？
+
+加上 `--stream`（ch21）就是：助手文本每到一个增量就打印一段，而不是等整条消息生成完。不加这个开关时，agent 仍然等到完整响应再输出，和前面的章节完全一样。
 
 ### 为什么不用 LangChain 这类框架？
 
