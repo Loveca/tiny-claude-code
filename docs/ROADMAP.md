@@ -38,9 +38,9 @@ tiny-claude-code/
 ├── src/
 │   ├── tiny_claude_code/           # 学生骨架代码
 │   │   ├── __init__.py
-│   │   ├── agent.py                # ch01: agent_loop
-│   │   ├── cli.py                  # ch01: REPL 入口
-│   │   ├── llm.py                  # ch01: Anthropic client 封装 / ch20: provider 适配层
+│   │   ├── agent.py                # ch01: agent_loop / ch21: on_text 流式回调
+│   │   ├── cli.py                  # ch01: REPL 入口 / ch21: --stream
+│   │   ├── llm.py                  # ch01: Anthropic client 封装 / ch20: provider 适配层 / ch21: 流式事件与累加器
 │   │   ├── tools/
 │   │   │   ├── __init__.py         # ch04: ToolRegistry
 │   │   │   ├── base.py             # ch04: Tool 抽象基类
@@ -571,9 +571,9 @@ tiny-claude-code/
 
 ---
 
-### 扩展章节（ch20）
+### 扩展章节（ch20-ch21）
 
-不属于 Part 1-6 的主线，放在最后作为可移植性扩展。
+不属于 Part 1-6 的主线，放在最后：ch20 补可移植性，ch21 补响应体验。
 
 ---
 
@@ -588,6 +588,23 @@ tiny-claude-code/
 - `OpenAIError` 带 `status_code` / `headers`，直接复用 ch07 的重试策略
 
 **验收**：接本地 Ollama（`OPENAI_BASE_URL=http://localhost:11434/v1`）或 DeepSeek 跑通一次工具调用；用 A provider 建的会话能 `--resume` 后在 B provider 继续
+
+---
+
+#### ch21: 流式输出
+
+**概念**：流式改变的是内容到达的方式，不是内容本身。各家原生事件先收敛成 4 种 harness 事件，再由累加器拼回循环认识的 `ChatResponse`，所以 `agent_loop` 只多一个默认关闭的回调参数。
+
+**学生实现**：
+- `llm.py`：`TextDelta` / `ToolUseStart` / `ToolUseArgsDelta` / `MessageStop` 四个事件；`StreamAccumulator` 把碎片拼回块结构
+- `llm.py`：`LLMClient.chat_stream` 翻译 SDK 的流事件；`OpenAICompatibleClient.chat_stream` 按 `index` 归并 `tool_calls` 碎片，`_http_stream_transport` 逐行读 SSE
+- `agent.py`：`agent_loop` 的 `on_text` 回调，文本到达即送出、每轮结尾换行
+- `cli.py`：`--stream` 开关；渲染器记得自己显示过什么，避免把最终回答打印两遍
+- `session.py`：保存时把 dataclass 块转成普通字典
+
+**边界**：流式的轮次不经过 `ErrorHandler`——已经打印了一半之后再重试会让文字重复出现，所以流式是显式开启的可选项。
+
+**验收**：`python scripts/dev.py run --ref -- --stream "..."` 能看到文字逐段出现；带工具调用的任务里，工具执行前的说明先流出、工具日志另起一行、最终回答只出现一次；流式产生的会话能用 `--resume` 读回
 
 ---
 
