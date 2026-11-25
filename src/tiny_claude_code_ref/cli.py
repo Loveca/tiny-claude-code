@@ -1,4 +1,4 @@
-﻿"""CLI entry point — interactive REPL.
+"""CLI entry point — interactive REPL.
 
 ch01: Implement main() — read user input, call agent_loop, print response.
 ch09: you will add /compact command handling.
@@ -54,6 +54,26 @@ def build_system_prompt(
     if skill_context:
         system += "\n\n" + skill_context
     return system
+
+
+class StreamPrinter:
+    """Write assistant text the moment it arrives (ch21 ``--stream``).
+
+    agent_loop hands over text deltas and closes each turn with a newline.
+    The printer remembers its recent output so the caller can tell whether the
+    final response was already shown instead of printing it a second time.
+    """
+
+    def __init__(self) -> None:
+        self.tail = ""
+
+    def __call__(self, text: str) -> None:
+        self.tail = (self.tail + text)[-4096:]
+        print(text, end="", flush=True)
+
+    def shown_finally(self, response: str) -> bool:
+        """True when ``response`` was the last thing this printer wrote."""
+        return bool(response) and self.tail.endswith(response + "\n")
 
 
 def _force_utf8_console() -> None:
