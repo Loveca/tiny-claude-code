@@ -1,11 +1,19 @@
-﻿"""Session persistence for the interactive CLI."""
+"""Session persistence for the interactive CLI."""
 
 from __future__ import annotations
 
 import json
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+def _json_default(value: Any) -> Any:
+    """Store dataclass response blocks (ch20/ch21) as plain JSON objects."""
+    if is_dataclass(value) and not isinstance(value, type):
+        return asdict(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 class SessionManager:
@@ -33,7 +41,8 @@ class SessionManager:
         }
         path = self.session_dir / f"{session_id}.json"
         path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default),
+            encoding="utf-8",
         )
         return path
 
