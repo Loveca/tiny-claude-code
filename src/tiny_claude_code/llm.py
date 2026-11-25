@@ -10,7 +10,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 import anthropic
@@ -61,6 +61,17 @@ class LLMClient:
         ch07: you will come back here to add ErrorHandler retry logic.
         """
         raise NotImplementedError('TODO: implement chat')
+
+    def chat_stream(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None=None, max_tokens: int=8000, system: str | None=None) -> Iterator[Any]:
+        """Send messages and yield the turn as stream events.
+
+        ch21: ask the SDK for a stream and translate its raw events. A
+        ``tool_use`` content block start becomes ToolUseStart; ``text_delta``
+        and ``input_json_delta`` become the two delta events; the stop reason
+        arrives on ``message_delta``. Always end with exactly one MessageStop,
+        even when the stream is cut short.
+        """
+        raise NotImplementedError('TODO: implement chat_stream')
 
 @dataclass
 class TextBlock:
@@ -186,6 +197,19 @@ def _http_transport(url: str, headers: dict[str, str], payload: dict[str, Any]) 
     """
     raise NotImplementedError('TODO: implement _http_transport')
 
+def _stream_stop_reason(finish_reason: str) -> str:
+    """Map a chat completions finish_reason onto the harness vocabulary."""
+    raise NotImplementedError('TODO: implement _stream_stop_reason')
+
+def _http_stream_transport(url: str, headers: dict[str, str], payload: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    """POST the payload and yield one decoded object per SSE ``data:`` line.
+
+    ch21: send an ``Accept: text/event-stream`` header, skip lines that are not
+    ``data:``, stop at ``[DONE]``, and raise OpenAIError the same way
+    ``_http_transport`` does.
+    """
+    raise NotImplementedError('TODO: implement _http_stream_transport')
+
 class OpenAICompatibleClient:
     """Talk to any server that implements OpenAI-style chat completions.
 
@@ -193,7 +217,7 @@ class OpenAICompatibleClient:
     the reply back into the TextBlock/ToolUseBlock shape agent_loop reads.
     """
 
-    def __init__(self, *, model: str | None=None, api_key: str | None=None, base_url: str | None=None, transport: Callable[[str, dict[str, str], dict[str, Any]], dict[str, Any]] | None=None) -> None:
+    def __init__(self, *, model: str | None=None, api_key: str | None=None, base_url: str | None=None, transport: Callable[[str, dict[str, str], dict[str, Any]], dict[str, Any]] | None=None, stream_transport: Callable[[str, dict[str, str], dict[str, Any]], Iterator[dict[str, Any]]] | None=None) -> None:
         """Resolve model, key and endpoint.
 
         Read from environment variables:
@@ -202,7 +226,8 @@ class OpenAICompatibleClient:
         - OPENAI_BASE_URL: service root (default: https://api.openai.com/v1)
 
         Derive ``endpoint`` as the base with a trailing slash stripped plus
-        ``/chat/completions``; keep ``transport`` injectable for tests.
+        ``/chat/completions``; keep ``transport`` and (ch21) ``stream_transport``
+        injectable for tests.
         """
         raise NotImplementedError('TODO: implement __init__')
 
@@ -213,6 +238,17 @@ class OpenAICompatibleClient:
         call the transport with a Bearer header, then adapt the response.
         """
         raise NotImplementedError('TODO: implement chat')
+
+    def chat_stream(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None=None, max_tokens: int=8000, system: str | None=None) -> Iterator[Any]:
+        """Send messages and yield the turn as stream events.
+
+        ch21: chat completions streams ``choices[0].delta``. Tool calls arrive
+        as fragments keyed by ``index``: the first one that carries an id or a
+        name opens the call (ToolUseStart), later ones only append argument
+        text. Track which indexes are open, translate ``finish_reason`` with
+        ``_stream_stop_reason``, and close with one MessageStop.
+        """
+        raise NotImplementedError('TODO: implement chat_stream')
 
 def create_client() -> LLMClient | OpenAICompatibleClient:
     """Pick a client from ``LLM_PROVIDER`` (default: ``anthropic``)."""
