@@ -1,4 +1,4 @@
-﻿"""Agent core — the while-True loop and tool dispatch.
+"""Agent core — the while-True loop and tool dispatch.
 
 ch01: Implement agent_loop() — an agent is just a loop.
 ch02: you will add hardcoded TOOL_HANDLERS.
@@ -7,12 +7,15 @@ ch05: you will add permission.check() before tool execution.
 ch06: you will replace permission.check() with hooks.trigger("PreToolUse", ...).
 ch07: you will wrap the LLM call with ErrorHandler.
 ch08: you will add context.compact() before each LLM call.
+ch21: you will add on_text, which streams assistant text as it arrives.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
+
+from tiny_claude_code_ref.llm import StreamAccumulator
 
 MAX_TURNS = 50
 
@@ -27,6 +30,7 @@ def agent_loop(
     context_manager: Any = None,
     compact_manager: Any = None,
     max_turns: int = MAX_TURNS,
+    on_text: Callable[[str], None] | None = None,
 ) -> str:
     """The core agent loop.
 
@@ -42,6 +46,9 @@ def agent_loop(
             ch02: {"bash": ShellTool()}
             ch04: replaced by ToolRegistry.dispatch
         client: LLMClient instance
+        on_text: ch21 — receives assistant text while the model writes it.
+            Each turn that produced text ends with a "\n", so whatever prints
+            next starts on a fresh line. None (default) keeps the plain path.
 
     Returns:
         The agent's final text response
@@ -49,6 +56,7 @@ def agent_loop(
     ch01: implement basic loop (chat-only mode, tool_handlers can be None)
     ch02: add tool execution logic (when tool_handlers is not None)
     ch07: add max-turn guard (force stop after 50 turns)
+    ch21: add the streaming path behind on_text
     """
     if client is None:
         raise ValueError("client is required")
@@ -60,7 +68,10 @@ def agent_loop(
             context_manager.compact(
                 messages, client=client, compact_manager=compact_manager
             )
-        response = _chat(client, messages, tools, system, error_handler)
+        if on_text is None:
+            response = _chat(client, messages, tools, system, error_handler)
+        else:
+            response = _chat_stream(client, messages, tools, system, on_text)
         messages.append({"role": "assistant", "content": response.content})
 
         if response.stop_reason != "tool_use":
@@ -173,6 +184,44 @@ def _chat(
     if error_handler is not None:
         return error_handler.chat(client, messages, tools=tools, system=system)
     return client.chat(messages, tools=tools, system=system)
+
+
+def _chat_stream(
+    client: Any,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    system: str | None,
+    on_text: Callable[[str], None],
+) -> Any:
+    """Run one streamed turn and hand assistant text to ``on_text`` as it comes.
+
+    ch21: the accumulator rebuilds the same response object the plain path
+    returns, so the rest of the loop cannot tell the difference. A client
+    without ``chat_stream`` falls back to ``chat`` and delivers its text in
+    one piece. Streamed turns are not retried: a retry after partial output
+    would print the same text twice.
+    """
+    stream = getattr(client, "chat_stream", None)
+    if stream is None:
+        response = client.chat(messages, tools=tools, system=system)
+        text = _extract_text(response.content)
+        if text:
+            on_text(text)
+            on_text("\n")
+        return response
+
+    accumulator = StreamAccumulator()
+    emitted = False
+    for event in stream(messages, tools=tools, system=system):
+        if getattr(event, "type", None) == "text_delta":
+            text = getattr(event, "text", "") or ""
+            if text:
+                emitted = True
+                on_text(text)
+        accumulator.feed(event)
+    if emitted:
+        on_text("\n")
+    return accumulator.response()
 
 
 def _trigger(hooks: Any, event: str, **kwargs: Any) -> Any:
