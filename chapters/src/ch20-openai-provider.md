@@ -219,4 +219,4 @@ Anthropic 的 `input` 是 dict，OpenAI 的 `function.arguments` 是 JSON **字�
 错误对齐 -> 状态码挂到异常上，接上 ch07 已有的重试契约
 ```
 
-harness 的其余部分完全没动——这正是 ch01 把 LLM 调用包成一个 `chat()` 方法的意义：边界越窄，能换的东西越多。剩下的可选项见 `docs/ROADMAP.md`。
+harness 的其余部分完全没动——这正是 ch01 把 LLM 调用包成一个 `chat()` 方法的意义：边界越窄，能换的东西越多。下一章会在这条边界上再开一个口子：`chat()` 旁边多一个 `chat_stream()`，让文本边生成边到达。剩下的可选项见 `docs/ROADMAP.md`。
