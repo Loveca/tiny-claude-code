@@ -5,6 +5,7 @@ ch09: you will add /compact command handling.
 ch10: you will add --resume flag and /memory command.
 ch17: you will add /goal for budgeted autonomous runs.
 ch18: you will add --mcp to load tools from an MCP server.
+ch21: you will add --stream to print assistant text as it arrives.
 """
 
 from __future__ import annotations
@@ -107,6 +108,7 @@ def main(argv: list[str] | None = None) -> None:
     ch02: initialize tool_handlers and pass to agent_loop
     ch09: add /compact command
     ch10: add --resume and /memory commands
+    ch21: add --stream, which passes a StreamPrinter as agent_loop's on_text
     """
     _force_utf8_console()
     parser = argparse.ArgumentParser(description="tiny-claude-code — AI coding agent")
@@ -144,6 +146,11 @@ def main(argv: list[str] | None = None) -> None:
         help='MCP server command, e.g. --mcp "python examples/mcp/echo_server.py"',
     )
     parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Print assistant text as it arrives (streamed turns are not retried)",
+    )
+    parser.add_argument(
         "task",
         nargs="*",
         help="Optional task to execute directly (non-interactive mode)",
@@ -152,6 +159,7 @@ def main(argv: list[str] | None = None) -> None:
 
     workspace = Path(args.workspace).resolve()
     client = create_client()
+    stream = StreamPrinter() if args.stream else None
     sessions = SessionManager(workspace)
     memory = MemoryManager(workspace)
     skills = SkillLoader(workspace)
@@ -222,9 +230,14 @@ def main(argv: list[str] | None = None) -> None:
             error_handler=error_handler,
             context_manager=context_manager,
             compact_manager=compact_manager,
+            on_text=stream,
         )
         sessions.save(session_id, messages, {"workspace": str(workspace)})
-        print(response)
+        if stream is None:
+            print(response)
+        elif not stream.shown_finally(response):
+            # Nothing was streamed for the final answer (e.g. the turn limit).
+            print(response)
         return
 
     print(f"tiny-claude-code — working in {workspace}")
@@ -297,9 +310,14 @@ def main(argv: list[str] | None = None) -> None:
             error_handler=error_handler,
             context_manager=context_manager,
             compact_manager=compact_manager,
+            on_text=stream,
         )
         sessions.save(session_id, messages, {"workspace": str(workspace)})
-        print(f"\n{response}\n")
+        if stream is None or not stream.shown_finally(response):
+            print(f"\n{response}\n")
+        else:
+            # The answer is already on screen; just leave a blank line.
+            print()
 
 
 def handle_memory_command(memory: MemoryManager, command: str) -> str:
