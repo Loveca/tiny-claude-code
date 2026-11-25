@@ -15,6 +15,12 @@ class SessionManager:
         raise NotImplementedError('TODO: implement new_session_id')
 
     def save(self, session_id: str, messages: list[dict[str, Any]], metadata: dict[str, Any] | None=None) -> Path:
+        """Write ``{id, updated_at, metadata, messages}`` as JSON.
+
+        ch21: assistant content may hold dataclass blocks from the ch20/ch21
+        adapter rather than plain dicts, so give ``json.dumps`` a ``default``
+        that turns dataclasses into dictionaries.
+        """
         raise NotImplementedError('TODO: implement save')
 
     def load(self, session_id: str) -> list[dict[str, Any]]:

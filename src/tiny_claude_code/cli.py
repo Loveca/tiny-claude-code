@@ -3,6 +3,7 @@
 ch01: Implement main() — read user input, call agent_loop, print response.
 ch09: you will add /compact command handling.
 ch10: you will add --resume flag and /memory command.
+ch21: you will add --stream, which prints assistant text as it arrives.
 """
 from __future__ import annotations
 import argparse
@@ -44,6 +45,9 @@ def main(argv: list[str] | None=None) -> None:
     ch06: create ProgressHook and register it on PreToolUse / PostToolUse
     ch09: add /compact command
     ch10: add --resume and /memory commands
+    ch21: add --stream — pass a callback as agent_loop's on_text that prints
+          each text piece immediately, and skip the final print when the
+          answer was already shown
     """
     raise NotImplementedError('TODO: implement main')
 
