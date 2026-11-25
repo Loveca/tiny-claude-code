@@ -3,6 +3,7 @@
 ch01: Implement LLMClient.chat() to wrap the Anthropic SDK call.
 ch20: add a chat-completions client plus the conversion layer that lets the
 same agent run against OpenAI-compatible providers.
+ch21: stream a turn as deltas instead of waiting for the whole message.
 """
 from __future__ import annotations
 import json
@@ -80,6 +81,75 @@ class ChatResponse:
     """Mimics an Anthropic Message: the attributes agent_loop reads."""
     content: list[Any]=field(default_factory=list)
     stop_reason: str='end_turn'
+
+@dataclass
+class TextDelta:
+    """A chunk of assistant text produced while streaming."""
+    type: str='text_delta'
+    text: str=''
+
+@dataclass
+class ToolUseStart:
+    """A tool call began; its arguments arrive in later deltas."""
+    type: str='tool_use_start'
+    id: str=''
+    name: str=''
+
+@dataclass
+class ToolUseArgsDelta:
+    """A fragment of the JSON-encoded tool arguments.
+
+    Neither API guarantees a fragment is valid JSON on its own, so deltas are
+    only meaningful once concatenated.
+    """
+    type: str='tool_use_args_delta'
+    partial_json: str=''
+
+@dataclass
+class MessageStop:
+    """The turn ended and reported why."""
+    type: str='message_stop'
+    stop_reason: str='end_turn'
+
+def _parse_tool_arguments(raw: str) -> Any:
+    """Turn accumulated argument text into the dict agent_loop expects.
+
+    ch21: empty text means "no arguments" (``{}``); unparsable text becomes
+    ``None`` so the loop answers with a malformed-block error instead of
+    crashing.
+    """
+    raise NotImplementedError('TODO: implement _parse_tool_arguments')
+
+class StreamAccumulator:
+    """Glue streamed deltas back into the ChatResponse shape.
+
+    The loop only knows ``content`` blocks and ``stop_reason``, so streaming
+    needs a place where fragments become blocks again. Feed every event in
+    order and read the result once the stream ends.
+
+    ch21: keep a reference to the tool call being filled so argument deltas
+    know where to go, and merge consecutive text deltas into one block.
+    """
+
+    def __init__(self) -> None:
+        raise NotImplementedError('TODO: implement __init__')
+
+    def feed(self, event: Any) -> None:
+        """Apply one event: text, tool start, argument fragment, or stop."""
+        raise NotImplementedError('TODO: implement feed')
+
+    def response(self) -> ChatResponse:
+        """Close any open tool call and return what has been accumulated."""
+        raise NotImplementedError('TODO: implement response')
+
+    def _append_text(self, text: str) -> None:
+        raise NotImplementedError('TODO: implement _append_text')
+
+    def _start_tool(self, tool_id: str, name: str) -> None:
+        raise NotImplementedError('TODO: implement _start_tool')
+
+    def _close_tool(self) -> None:
+        raise NotImplementedError('TODO: implement _close_tool')
 
 def anthropic_messages_to_openai(messages: list[dict[str, Any]], system: str | None=None) -> list[dict[str, Any]]:
     """Convert Anthropic-shaped messages into chat completions messages.
